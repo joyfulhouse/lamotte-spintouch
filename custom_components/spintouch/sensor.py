@@ -19,7 +19,6 @@ from .const import (
     CALCULATED_SENSORS,
     CONF_DISK_SERIES,
     DEFAULT_DISK_SERIES,
-    DISK_SERIES_OPTIONS,
     DOMAIN,
     SENSORS,
 )
@@ -36,9 +35,8 @@ PARAMETER_SHORT_NAMES: dict[str, str] = {
     "cyanuric_acid": "CYA",
     "copper": "Cu",
     "iron": "Fe",
-    "phosphate": "Phos",
-    "borate": "Bor",
-    "param_0d": "P/B",  # Phosphate or Borate depending on disk
+    "phosphate": "Phos",  # 0x0E per app
+    "borate": "Bor",  # 0x0D per app
     "salt": "Salt",
 }
 
@@ -69,16 +67,15 @@ async def async_setup_entry(
     )
 
     # Define which sensors to skip based on disk series
-    # - 303/304: use param_0d (Borate), skip borate (0x0E doesn't exist)
-    # - 203: use both param_0d (Phosphate) and borate (0x0E)
-    # - 204: skip param_0d, use borate (0x0E)
-    # - auto: create all sensors, availability will be determined by data
+    # Per decompiled app: 0x0D = BOR (Borate), 0x0E = PHOS (Phosphate)
+    # Disk 203/204: Have Phosphate (0x0E)
+    # Disk 303/304: Have Borate (0x0D), no Phosphate
+    # For "auto": create all sensors, availability determined by actual data
     skip_sensors: set[str] = set()
     if disk_series in ("303", "304"):
-        skip_sensors.add("borate")  # 0x0E doesn't exist on these disks
-    elif disk_series == "204":
-        skip_sensors.add("param_0d")  # 0x0D doesn't exist on this disk
-    # For "auto" or "203", create all sensors
+        skip_sensors.add("phosphate")  # 0x0E doesn't exist on borate disks
+    elif disk_series in ("203", "204"):
+        skip_sensors.add("borate")  # These use phosphate instead
 
     entities: list[SensorEntity] = []
 
@@ -88,20 +85,12 @@ async def async_setup_entry(
         if sensor_def.key in skip_sensors:
             continue
 
-        # Override name for param_0d based on disk series
-        name = sensor_def.name
-        if sensor_def.key == "param_0d":
-            if disk_series == "auto":
-                name = "Phosphate/Borate"  # Generic name until detected
-            else:
-                name = DISK_SERIES_OPTIONS.get(disk_series, "Borate")
-
         entities.append(
             SpinTouchSensor(
                 coordinator=coordinator,
                 entry=entry,
                 key=sensor_def.key,
-                name=name,
+                name=sensor_def.name,
                 unit=sensor_def.unit,
                 icon=sensor_def.icon,
                 decimals=sensor_def.decimals,

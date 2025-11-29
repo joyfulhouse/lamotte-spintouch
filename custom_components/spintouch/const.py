@@ -1,4 +1,8 @@
-"""Constants for the LaMotte SpinTouch integration."""
+"""Constants for the LaMotte SpinTouch integration.
+
+Data format derived from decompiled WaterLinkSolutionsHome.dll (2025-11-29).
+See RESEARCH.md for full protocol documentation.
+"""
 
 from __future__ import annotations
 
@@ -11,53 +15,119 @@ DOMAIN = "spintouch"
 CONF_DISK_SERIES = "disk_series"
 
 # Supported disk series and their param 0x0D chemical
-# 0x0D is overloaded - means Phosphate on some disks, Borate on others
+# Per app decompilation: 0x0D = BOR (Borate), 0x0E = PHOS (Phosphate)
+# However, observed BLE data suggests disk-dependent interpretation
 DISK_SERIES_OPTIONS = {
     "auto": "Auto-detect",
-    "203": "Phosphate",
-    "204": "Borate",
-    "303": "Borate",
-    "304": "Borate",
+    "203": "Phosphate",  # Bromine disk with phosphate
+    "204": "Phosphate",  # High range with phosphate
+    "303": "Borate",  # Chlorine disk with borate
+    "304": "Borate",  # High range with borate
 }
 DEFAULT_DISK_SERIES = "auto"
 
-# BLE UUIDs
-SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"
-DATA_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000010"
-STATUS_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000011"
+# BLE UUIDs (from Constants class in decompiled app)
+SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"  # SPIN_TOUCH_SERVICE
+DATA_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000010"  # SPIN_TOUCH_TTEST
+STATUS_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000011"  # SPIN_TOUCH_TESTAVAIL
+SENDTEST_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000012"  # SPIN_TOUCH_SENDTEST
+ACK_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000013"  # SPIN_TOUCH_TESTACK
 
 # Connection settings
 DISCONNECT_DELAY = 10  # seconds after reading before disconnect
 RECONNECT_DELAY = 300  # seconds to wait before reconnecting (5 min)
 
-# Data parsing constants
-HEADER_SIZE = 4  # First 4 bytes are header
-ENTRY_SIZE = 6  # Each parameter entry is 6 bytes [param_id, flags, float32_le]
-MAX_ENTRIES = 11  # Maximum number of parameter entries
-TIMESTAMP_OFFSET = 76  # Bytes 76-81: YY-MM-DD-HH-MM-SS
+# Data parsing constants (from TestStructure.Parse() in decompiled app)
+# Total structure: 91 bytes
+# [0-3] Start signature, [4-75] 12 entries, [76-83] timestamp
+# [84-86] metadata, [87-90] end signature
+START_SIGNATURE = bytes([0x01, 0x02, 0x03, 0x05])  # Prime numbers!
+END_SIGNATURE = bytes([0x07, 0x0B, 0x0D, 0x11])  # Also primes: 7, 11, 13, 17
+HEADER_SIZE = 4  # Start signature: [0x01, 0x02, 0x03, 0x05]
+ENTRY_SIZE = 6  # Each entry: [TestType, Decimals, float32_le]
+MAX_ENTRIES = 12  # TestResults array has 12 slots
+TIMESTAMP_OFFSET = 76  # Bytes 76-83: YY-MM-DD-HH-MM-SS-AMPM-Military
+TIMESTAMP_SIZE = 8  # Full timestamp including AM/PM and military flags
+METADATA_OFFSET = 84  # Bytes 84-86: num_valid, disk_type, sanitizer
+END_SIGNATURE_OFFSET = 87  # Bytes 87-90: end signature
+MIN_DATA_SIZE = 91  # Minimum valid data size
+
+# Disk type indices (from discStr array in decompiled app)
+DISK_TYPE_MAP = {
+    0: "101",
+    1: "102",
+    2: "201",
+    3: "202",
+    4: "301",
+    5: "302",
+    6: "401",
+    7: "402",  # Biguanide
+    8: "501",
+    9: "601",
+    16: "103",
+    17: "203",  # Phosphate disk
+    18: "303",  # Borate disk
+    19: "503",
+    20: "603",
+    22: "104",
+    23: "204",  # High range + Phosphate
+    24: "304",  # High range + Borate
+}
+
+# Sanitizer type indices (from sanStr array in decompiled app)
+SANITIZER_TYPE_MAP = {
+    0: "Chlorine",
+    1: "Salt",
+    2: "Bromine",
+    3: "Biguanide",
+    4: "DWTreated",
+    5: "AQFresh",
+    6: "CTCL",
+    7: "CTBR",
+    8: "Unknown",
+}
 
 
 class ParamId(IntEnum):
-    """Parameter IDs in the SpinTouch BLE data.
+    """Parameter IDs (TestType) in the SpinTouch BLE data.
+
+    From testStr array in decompiled app. These are indices into
+    the TestFactorCode enum which maps to chemical names.
 
     Different disk series include different parameters.
     Parse by scanning for these IDs, not by fixed offset.
     """
 
-    FREE_CHLORINE = 0x01  # Chlorine disks (303, 304)
-    TOTAL_CHLORINE = 0x02  # Chlorine disks (303, 304)
-    BROMINE = 0x03  # Bromine disks (203)
+    # testStr[1] = "FCL" -> TestFactorCode.FCL
+    FREE_CHLORINE = 0x01
+    # testStr[2] = "TCL" -> TestFactorCode.TCL
+    TOTAL_CHLORINE = 0x02
+    # testStr[3] = "BR" -> TestFactorCode.BR
+    BROMINE = 0x03
+    # testStr[6] = "PH" -> TestFactorCode.PH
     PH = 0x06
+    # testStr[7] = "ALK" -> TestFactorCode.ALK
     ALKALINITY = 0x07
-    CALCIUM_204 = 0x08  # Calcium Hardness on disk 204
+    # testStr[8] = "HARDHR" -> TestFactorCode.HARD (high range)
+    CALCIUM_HR = 0x08
+    # testStr[10] = "CYA" -> TestFactorCode.CYA
     CYANURIC_ACID = 0x0A
-    IRON = 0x0B  # Chlorine/Bromine disks (203, 303, 304)
-    COPPER = 0x0C  # All disks
-    PHOSPHATE_BORATE = 0x0D  # Phosphate (disk 203) or Borate (disk 303/304) - context-dependent
-    BORATE = 0x0E  # Borate on disk 203, 204
-    CALCIUM = 0x0F  # Calcium Hardness on disk 203, 303, 304
-    SALT = 0x10  # All disks
-    UNKNOWN_11 = 0x11
+    # testStr[11] = "IRON" -> TestFactorCode.IRON
+    IRON = 0x0B
+    # testStr[12] = "COPPER" -> TestFactorCode.COPPER
+    COPPER = 0x0C
+    # testStr[13] = "BOR" -> TestFactorCode.BORATE (per app)
+    # However, observed as Phosphate on disk 203 - needs verification
+    BORATE_0D = 0x0D
+    # testStr[14] = "PHOS" -> TestFactorCode.PHOSPHATE (per app)
+    # However, observed as Borate on disk 203/204 - needs verification
+    PHOSPHATE_0E = 0x0E
+    # testStr[15] = "CALH" -> TestFactorCode.HARDCA (calcium hardness)
+    CALCIUM = 0x0F
+    # testStr[16] = "SALT" -> TestFactorCode.SALT
+    SALT = 0x10
+    # testStr[17] = "CCL" -> TestFactorCode.CCL (combined chlorine)
+    COMBINED_CHLORINE = 0x11
 
 
 @dataclass
@@ -133,9 +203,9 @@ SENSORS: list[SensorDefinition] = [
         unit="ppm",
         icon="mdi:water",
         decimals=1,
-        param_ids=[ParamId.CALCIUM, ParamId.CALCIUM_204],  # Both 0x0F and 0x08
+        param_ids=[ParamId.CALCIUM, ParamId.CALCIUM_HR],  # 0x0F (standard) and 0x08 (high range)
         min_valid=0,
-        max_valid=1000,
+        max_valid=1200,  # High range goes to 1200 ppm
     ),
     SensorDefinition(
         key="cyanuric_acid",
@@ -177,28 +247,31 @@ SENSORS: list[SensorDefinition] = [
         min_valid=0,
         max_valid=5,
     ),
-    # Borate sensor - uses 0x0E (disk 204) or 0x0D (disk 303 when configured as Borate)
+    # Phosphate sensor - param 0x0E
+    # Per app: testStr[14] = "PHOS" -> Phosphate
+    # Unit is ppb per GenerateTestFactor() in decompiled app
+    SensorDefinition(
+        key="phosphate",
+        name="Phosphate",
+        unit="ppb",
+        icon="mdi:flask-outline",
+        decimals=0,
+        param_ids=[ParamId.PHOSPHATE_0E],  # 0x0E
+        min_valid=0,
+        max_valid=2500,  # 0-2000 ppb range per LaMotte specs
+    ),
+    # Borate sensor - param 0x0D
+    # Per app: testStr[13] = "BOR" -> Borate
+    # Name may be overridden based on disk_series config if disk-dependent
     SensorDefinition(
         key="borate",
         name="Borate",
         unit="ppm",
         icon="mdi:flask-outline",
         decimals=1,
-        param_ids=[ParamId.BORATE],  # 0x0E - always Borate
+        param_ids=[ParamId.BORATE_0D],  # 0x0D
         min_valid=0,
-        max_valid=200,
-    ),
-    # Phosphate/Borate sensor - param 0x0D, meaning depends on disk series
-    # Name is overridden based on disk_series config
-    SensorDefinition(
-        key="param_0d",
-        name="Borate",  # Default name, overridden based on disk_series config
-        unit="ppm",
-        icon="mdi:flask-outline",
-        decimals=1,
-        param_ids=[ParamId.PHOSPHATE_BORATE],  # 0x0D - context-dependent
-        min_valid=0,
-        max_valid=2000,
+        max_valid=100,  # 0-80 ppm range per LaMotte specs
     ),
 ]
 

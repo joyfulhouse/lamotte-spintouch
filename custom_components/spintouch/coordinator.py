@@ -23,22 +23,28 @@ if TYPE_CHECKING:
     from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 from .const import (
+    ACK_CHARACTERISTIC_UUID,
     DATA_CHARACTERISTIC_UUID,
     DISCONNECT_DELAY,
+    DISK_TYPE_MAP,
     DOMAIN,
+    END_SIGNATURE,
+    END_SIGNATURE_OFFSET,
     ENTRY_SIZE,
     HEADER_SIZE,
     MAX_ENTRIES,
+    METADATA_OFFSET,
+    MIN_DATA_SIZE,
     PARAM_ID_TO_SENSOR,
     RECONNECT_DELAY,
+    SANITIZER_TYPE_MAP,
+    START_SIGNATURE,
     STATUS_CHARACTERISTIC_UUID,
     TIMESTAMP_OFFSET,
+    TIMESTAMP_SIZE,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-# Minimum data size for valid reading (need at least 82 bytes for timestamp)
-MIN_DATA_SIZE = 82
 
 
 class SpinTouchData:
@@ -52,6 +58,13 @@ class SpinTouchData:
         self.connected: bool = False
         self.connection_enabled: bool = True
         self.detected_param_ids: set[int] = set()  # Track which param_ids are present
+
+        # Metadata from BLE data (from decompiled app)
+        self.num_valid_results: int = 0  # Byte 84: number of valid test results
+        self.disk_type_index: int | None = None  # Byte 85: index into discStr array
+        self.sanitizer_type_index: int | None = None  # Byte 86: index into sanStr array
+        self.disk_type: str | None = None  # Human-readable disk type
+        self.sanitizer_type: str | None = None  # Human-readable sanitizer type
 
     @property
     def detected_disk_series(self) -> str | None:
@@ -85,18 +98,45 @@ class SpinTouchData:
     def update_from_bytes(self, data: bytes) -> bool:
         """Parse BLE data and update values.
 
-        Parses by scanning for param_ids at 6-byte boundaries, not fixed offsets.
-        This ensures compatibility with all disk series.
+        Data format (from decompiled TestStructure.Parse()):
+        - Bytes 0-3: Start signature [0x01, 0x02, 0x03, 0x05]
+        - Bytes 4-75: 12 test results x 6 bytes [TestType, Decimals, float32_le]
+        - Bytes 76-83: Timestamp [YY, MM, DD, HH, MM, SS, AM/PM, Military]
+        - Bytes 84-86: Metadata [num_valid, disk_type, sanitizer_type]
+        - Bytes 87-90: End signature [0x07, 0x0B, 0x0D, 0x11]
 
-        Returns True if data was valid AND represents a new report (different timestamp).
+        Returns True if data was valid AND represents a new report.
         """
         if len(data) < MIN_DATA_SIZE:
-            _LOGGER.warning("Data too short: %d bytes", len(data))
+            _LOGGER.warning("Data too short: %d bytes (expected %d)", len(data), MIN_DATA_SIZE)
             return False
 
         _LOGGER.debug("Parsing %d bytes of SpinTouch data", len(data))
 
-        # Parse report timestamp first to check if this is new data
+        # Validate start signature
+        if data[:HEADER_SIZE] != START_SIGNATURE:
+            _LOGGER.warning(
+                "Invalid start signature: %s (expected %s)",
+                data[:HEADER_SIZE].hex(),
+                START_SIGNATURE.hex(),
+            )
+            return False
+
+        # Validate end signature (if data is long enough)
+        if len(data) >= END_SIGNATURE_OFFSET + 4:
+            end_sig = data[END_SIGNATURE_OFFSET : END_SIGNATURE_OFFSET + 4]
+            if end_sig != END_SIGNATURE:
+                _LOGGER.warning(
+                    "Invalid end signature: %s (expected %s)",
+                    end_sig.hex(),
+                    END_SIGNATURE.hex(),
+                )
+                # Continue anyway - signature check is informational
+
+        # Parse metadata first (disk type, sanitizer type, valid count)
+        self._parse_metadata(data)
+
+        # Parse report timestamp to check if this is new data
         old_report_time = self.report_time
         self._parse_report_timestamp(data)
 
@@ -105,80 +145,101 @@ class SpinTouchData:
             _LOGGER.debug("Report timestamp unchanged, skipping update")
             return False
 
-        # Parse parameter entries by scanning param_ids
-        # Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+        # Parse parameter entries
+        entries_parsed = self._parse_entries(data)
+        _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
+
+        # Log disk info
+        self._log_disk_info()
+
+        # Calculate derived values
+        self._calculate_derived_values()
+
+        self.last_reading_time = dt_util.utcnow()
+        return True
+
+    def _parse_entries(self, data: bytes) -> int:
+        """Parse parameter entries from BLE data.
+
+        Format: 6-byte entries [TestType, Decimals, float32_le]
+        Returns number of entries parsed.
+        """
         offset = HEADER_SIZE
         entries_parsed = 0
 
         while offset + ENTRY_SIZE <= len(data) and entries_parsed < MAX_ENTRIES:
-            param_id = data[offset]
-            flags = data[offset + 1]
+            test_type = data[offset]
+            decimals = data[offset + 1]
 
             # End of entries marker (00-00)
-            if param_id == 0 and flags == 0:
-                _LOGGER.debug("End of entries at offset %d", offset)
+            if test_type == 0 and decimals == 0:
                 break
 
-            # Look up sensor definition for this param_id
-            sensor = PARAM_ID_TO_SENSOR.get(param_id)
-
-            # Track all param_ids we see for disk detection
-            self.detected_param_ids.add(param_id)
-
-            if sensor:
-                try:
-                    # Extract float32 little-endian from offset+2
-                    value = struct.unpack_from("<f", data, offset + 2)[0]
-
-                    # Validate the value
-                    if (
-                        value is not None
-                        and not math.isnan(value)
-                        and sensor.min_valid <= value <= sensor.max_valid
-                    ):
-                        self.values[sensor.key] = round(value, sensor.decimals)
-                        _LOGGER.debug(
-                            "Param 0x%02X -> %s: %.2f %s (flags=0x%02X)",
-                            param_id,
-                            sensor.name,
-                            value,
-                            sensor.unit or "",
-                            flags,
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "Param 0x%02X -> %s: invalid value %s (range: %s-%s)",
-                            param_id,
-                            sensor.name,
-                            value,
-                            sensor.min_valid,
-                            sensor.max_valid,
-                        )
-                except struct.error as err:
-                    _LOGGER.error(
-                        "Failed to parse param 0x%02X at offset %d: %s",
-                        param_id,
-                        offset,
-                        err,
-                    )
-            else:
-                _LOGGER.debug(
-                    "Unknown param_id 0x%02X at offset %d (flags=0x%02X)",
-                    param_id,
-                    offset,
-                    flags,
-                )
-
+            self._parse_single_entry(data, offset, test_type, decimals)
             offset += ENTRY_SIZE
             entries_parsed += 1
 
-        _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
+        return entries_parsed
 
-        # Log detected disk series
-        if self.detected_disk_series:
+    def _parse_single_entry(self, data: bytes, offset: int, test_type: int, decimals: int) -> None:
+        """Parse a single test result entry."""
+        # Track all param_ids we see for disk detection
+        self.detected_param_ids.add(test_type)
+
+        sensor = PARAM_ID_TO_SENSOR.get(test_type)
+        if not sensor:
+            _LOGGER.debug(
+                "Unknown TestType 0x%02X at offset %d (decimals=%d)",
+                test_type,
+                offset,
+                decimals,
+            )
+            return
+
+        try:
+            value = struct.unpack_from("<f", data, offset + 2)[0]
+            if self._is_valid_value(value, sensor):
+                display_decimals = decimals if decimals < 10 else sensor.decimals
+                self.values[sensor.key] = round(value, display_decimals)
+                _LOGGER.debug(
+                    "TestType 0x%02X -> %s: %.2f %s",
+                    test_type,
+                    sensor.name,
+                    value,
+                    sensor.unit or "",
+                )
+            else:
+                _LOGGER.debug(
+                    "TestType 0x%02X -> %s: invalid value %s",
+                    test_type,
+                    sensor.name,
+                    value,
+                )
+        except struct.error as err:
+            _LOGGER.error("Failed to parse TestType 0x%02X: %s", test_type, err)
+
+    def _is_valid_value(self, value: float, sensor: object) -> bool:
+        """Check if a sensor value is valid."""
+        return (
+            value is not None
+            and not math.isnan(value)
+            and sensor.min_valid <= value <= sensor.max_valid  # type: ignore[attr-defined]
+        )
+
+    def _log_disk_info(self) -> None:
+        """Log disk type information."""
+        if self.disk_type:
+            _LOGGER.info(
+                "Disk type: %s, Sanitizer: %s, Valid results: %d",
+                self.disk_type,
+                self.sanitizer_type or "Unknown",
+                self.num_valid_results,
+            )
+        elif self.detected_disk_series:
             _LOGGER.info("Auto-detected disk series: %s", self.detected_disk_series)
 
-        # Calculate derived values
+    def _calculate_derived_values(self) -> None:
+        """Calculate derived sensor values."""
         fc = self.values.get("free_chlorine")
         tc = self.values.get("total_chlorine")
         cya = self.values.get("cyanuric_acid")
@@ -190,12 +251,46 @@ class SpinTouchData:
         if fc is not None and cya is not None and cya > 0:
             self.values["fc_cya_ratio"] = round((fc / cya) * 100, 1)
 
-        self.last_reading_time = dt_util.utcnow()
-        return True
+    def _parse_metadata(self, data: bytes) -> None:
+        """Parse metadata from BLE data (bytes 84-86)."""
+        if len(data) < METADATA_OFFSET + 3:
+            return
+
+        self.num_valid_results = data[METADATA_OFFSET]
+        self.disk_type_index = data[METADATA_OFFSET + 1]
+        self.sanitizer_type_index = data[METADATA_OFFSET + 2]
+
+        # Look up human-readable names
+        self.disk_type = DISK_TYPE_MAP.get(
+            self.disk_type_index, f"Unknown ({self.disk_type_index})"
+        )
+        self.sanitizer_type = SANITIZER_TYPE_MAP.get(
+            self.sanitizer_type_index, f"Unknown ({self.sanitizer_type_index})"
+        )
+
+        _LOGGER.debug(
+            "Metadata: valid=%d, disk_idx=%d (%s), sanitizer_idx=%d (%s)",
+            self.num_valid_results,
+            self.disk_type_index,
+            self.disk_type,
+            self.sanitizer_type_index,
+            self.sanitizer_type,
+        )
 
     def _parse_report_timestamp(self, data: bytes) -> None:
-        """Parse the report timestamp from BLE data."""
-        if len(data) < TIMESTAMP_OFFSET + 6:
+        """Parse the report timestamp from BLE data.
+
+        Format (from decompiled TestTime class):
+        - Byte 0: Year (2-digit, add 2000)
+        - Byte 1: Month (1-12)
+        - Byte 2: Day (1-31)
+        - Byte 3: Hour (1-12 or 0-23)
+        - Byte 4: Minute (0-59)
+        - Byte 5: Seconds (0-59)
+        - Byte 6: AM/PM flag (0=AM, 1=PM)
+        - Byte 7: Military flag (0=12h, 1=24h)
+        """
+        if len(data) < TIMESTAMP_OFFSET + TIMESTAMP_SIZE:
             _LOGGER.warning("Data too short for timestamp parsing")
             return
 
@@ -206,6 +301,15 @@ class SpinTouchData:
             hour = data[TIMESTAMP_OFFSET + 3]
             minute = data[TIMESTAMP_OFFSET + 4]
             second = data[TIMESTAMP_OFFSET + 5]
+            ampm = data[TIMESTAMP_OFFSET + 6]
+            military = data[TIMESTAMP_OFFSET + 7]
+
+            # Convert 12h to 24h if not military time
+            if military == 0:  # 12-hour format
+                if ampm == 1 and hour < 12:  # PM
+                    hour += 12
+                elif ampm == 0 and hour == 12:  # 12 AM = 0
+                    hour = 0
 
             # Validate all ranges at once
             if not (
@@ -233,8 +337,10 @@ class SpinTouchData:
             self.report_time = naive_dt.replace(tzinfo=local_tz)
 
             _LOGGER.debug(
-                "Report timestamp: %s",
+                "Report timestamp: %s (military=%d, ampm=%d)",
                 self.report_time.isoformat(),
+                military,
+                ampm,
             )
         except (ValueError, IndexError) as err:
             _LOGGER.warning("Failed to parse report timestamp: %s", err)
@@ -398,7 +504,13 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self.hass.async_create_task(self._async_read_data())
 
     async def _async_read_data(self) -> None:
-        """Read data from the SpinTouch device."""
+        """Read data from the SpinTouch device.
+
+        Per decompiled app (OnCharacteristicRead):
+        1. Read data from TTEST characteristic
+        2. Parse with TestStructure.Parse()
+        3. Send ACK byte (0x01) to TESTACK characteristic
+        """
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot read data - not connected")
             return
@@ -417,6 +529,10 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                     self._data.values.get("cyanuric_acid", 0),
                     self._data.values.get("salt", 0),
                 )
+
+                # Send ACK to device (per decompiled app protocol)
+                await self._async_send_ack()
+
                 self._reading_received = True
                 self.async_set_updated_data(self._data)
                 self._schedule_disconnect()
@@ -425,6 +541,21 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
         except BleakError as err:
             _LOGGER.error("Failed to read data: %s", err)
+
+    async def _async_send_ack(self) -> None:
+        """Send acknowledgment to SpinTouch device.
+
+        Per decompiled app: WriteCharacteristic(SpinTestAckCharacteristic, new byte[1] { 0x01 })
+        """
+        if not self._client or not self._client.is_connected:
+            return
+
+        try:
+            await self._client.write_gatt_char(ACK_CHARACTERISTIC_UUID, bytes([0x01]))
+            _LOGGER.debug("Sent ACK to SpinTouch")
+        except BleakError as err:
+            _LOGGER.warning("Failed to send ACK: %s", err)
+            # Non-fatal - continue even if ACK fails
 
     def _schedule_disconnect(self) -> None:
         """Schedule disconnect after delay to allow phone app access.
