@@ -10,11 +10,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
 
+from .base import SpinTouchEntity
 from .const import (
     CALCULATED_SENSORS,
     CONF_DISK_SERIES,
@@ -23,6 +22,7 @@ from .const import (
     SENSORS,
 )
 from .coordinator import SpinTouchCoordinator, SpinTouchData
+from .util import restore_datetime_state, restore_float_state
 
 # Short display names for water quality status
 PARAMETER_SHORT_NAMES: dict[str, str] = {
@@ -35,8 +35,8 @@ PARAMETER_SHORT_NAMES: dict[str, str] = {
     "cyanuric_acid": "CYA",
     "copper": "Cu",
     "iron": "Fe",
-    "phosphate": "Phos",  # 0x0E per app
-    "borate": "Bor",  # 0x0D per app
+    "phosphate": "Phos",
+    "borate": "Bor",
     "salt": "Salt",
 }
 
@@ -56,46 +56,33 @@ async def async_setup_entry(
     """Set up SpinTouch sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Get disk series from config (default to "auto" for auto-detection)
+    # Determine disk series (auto-detected or configured)
     configured_disk_series = entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
-
-    # Use auto-detected disk series if available, otherwise fall back to configured
     disk_series = (
         coordinator.data.detected_disk_series
         if coordinator.data and coordinator.data.detected_disk_series
         else configured_disk_series
     )
 
-    # Define which sensors to skip based on disk series
-    # Per decompiled app: 0x0D = BOR (Borate), 0x0E = PHOS (Phosphate)
-    # Disk 203/204: Have Phosphate (0x0E)
-    # Disk 303/304: Have Borate (0x0D), no Phosphate
-    # For "auto": create all sensors, availability determined by actual data
-    skip_sensors: set[str] = set()
-    if disk_series in ("303", "304"):
-        skip_sensors.add("phosphate")  # 0x0E doesn't exist on borate disks
-    elif disk_series in ("203", "204"):
-        skip_sensors.add("borate")  # These use phosphate instead
+    # Determine which sensors to skip based on disk series
+    skip_sensors = _get_skip_sensors(disk_series)
 
     entities: list[SensorEntity] = []
 
     # Primary sensors from BLE data
     for sensor_def in SENSORS:
-        # Skip sensors not applicable to this disk series
-        if sensor_def.key in skip_sensors:
-            continue
-
-        entities.append(
-            SpinTouchSensor(
-                coordinator=coordinator,
-                entry=entry,
-                key=sensor_def.key,
-                name=sensor_def.name,
-                unit=sensor_def.unit,
-                icon=sensor_def.icon,
-                decimals=sensor_def.decimals,
+        if sensor_def.key not in skip_sensors:
+            entities.append(
+                SpinTouchSensor(
+                    coordinator=coordinator,
+                    entry=entry,
+                    key=sensor_def.key,
+                    name=sensor_def.name,
+                    unit=sensor_def.unit,
+                    icon=sensor_def.icon,
+                    decimals=sensor_def.decimals,
+                )
             )
-        )
 
     # Calculated sensors
     for calc_sensor in CALCULATED_SENSORS:
@@ -111,17 +98,33 @@ async def async_setup_entry(
             )
         )
 
-    # Diagnostic sensors
-    entities.append(SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry))
-    entities.append(SpinTouchReportTimeSensor(coordinator=coordinator, entry=entry))
-
-    # Water quality status sensor
-    entities.append(SpinTouchWaterQualitySensor(coordinator=coordinator, entry=entry))
+    # Diagnostic and status sensors
+    entities.extend(
+        [
+            SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry),
+            SpinTouchReportTimeSensor(coordinator=coordinator, entry=entry),
+            SpinTouchWaterQualitySensor(coordinator=coordinator, entry=entry),
+        ]
+    )
 
     async_add_entities(entities)
 
 
+def _get_skip_sensors(disk_series: str) -> set[str]:
+    """Get sensors to skip based on disk series.
+
+    Disk 203/204: Have Phosphate (0x0E)
+    Disk 303/304: Have Borate (0x0D), no Phosphate
+    """
+    if disk_series in ("303", "304"):
+        return {"phosphate"}
+    if disk_series in ("203", "204"):
+        return {"borate"}
+    return set()
+
+
 class SpinTouchSensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     RestoreEntity,  # type: ignore[misc]
     SensorEntity,  # type: ignore[misc]
@@ -146,33 +149,22 @@ class SpinTouchSensor(
         self._key = key
         self._decimals = decimals
 
-        self._attr_unique_id = f"{entry.entry_id}_{key}"
-        self._attr_name = name
+        self._setup_spintouch_device(coordinator, entry, key, name)
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_suggested_display_precision = decimals
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
 
     async def async_added_to_hass(self) -> None:
         """Restore state on startup."""
         await super().async_added_to_hass()
 
-        # Try to restore last known value (only if not already set)
-        last_state = await self.async_get_last_state()
-        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
-            try:
-                restored_value = float(last_state.state)
-                # Only restore if coordinator doesn't already have this value
-                if self.coordinator.data and self._key not in self.coordinator.data.values:
-                    self.coordinator.data.values[self._key] = restored_value
-            except (ValueError, TypeError):
-                pass
+        restored_value = await restore_float_state(self)
+        if (
+            restored_value is not None
+            and self.coordinator.data
+            and self._key not in self.coordinator.data.values
+        ):
+            self.coordinator.data.values[self._key] = restored_value
 
     @property
     def native_value(self) -> float | None:
@@ -184,11 +176,12 @@ class SpinTouchSensor(
 
     @property
     def available(self) -> bool:
-        """Return if entity is available (has data from BLE or restored state)."""
+        """Return if entity is available."""
         return self.coordinator.data is not None and self._key in self.coordinator.data.values
 
 
 class SpinTouchLastReadingSensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     RestoreEntity,  # type: ignore[misc]
     SensorEntity,  # type: ignore[misc]
@@ -207,46 +200,25 @@ class SpinTouchLastReadingSensor(
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-
-        self._attr_unique_id = f"{entry.entry_id}_last_reading"
-        self._attr_name = "Last Reading"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        self._setup_spintouch_device(coordinator, entry, "last_reading", "Last Reading")
 
     async def async_added_to_hass(self) -> None:
         """Restore state on startup."""
         await super().async_added_to_hass()
 
-        # Only restore if not already set
-        last_state = await self.async_get_last_state()
-        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
-            try:
-                restored_dt = dt_util.parse_datetime(last_state.state)
-                if (
-                    restored_dt
-                    and self.coordinator.data
-                    and not self.coordinator.data.last_reading_time
-                ):
-                    self.coordinator.data.last_reading_time = restored_dt
-            except (ValueError, TypeError):
-                pass
+        restored_dt = await restore_datetime_state(self)
+        if restored_dt and self.coordinator.data and not self.coordinator.data.last_reading_time:
+            self.coordinator.data.last_reading_time = restored_dt
 
     @property
     def native_value(self) -> datetime | None:
         """Return the last reading timestamp."""
         data: SpinTouchData | None = self.coordinator.data
-        if data and data.last_reading_time:
-            return data.last_reading_time
-        return None
+        return data.last_reading_time if data else None
 
     @property
     def available(self) -> bool:
-        """Return if entity is available (has data from BLE or restored state)."""
+        """Return if entity is available."""
         return (
             self.coordinator.data is not None
             and self.coordinator.data.last_reading_time is not None
@@ -254,6 +226,7 @@ class SpinTouchLastReadingSensor(
 
 
 class SpinTouchReportTimeSensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     RestoreEntity,  # type: ignore[misc]
     SensorEntity,  # type: ignore[misc]
@@ -271,46 +244,30 @@ class SpinTouchReportTimeSensor(
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-
-        self._attr_unique_id = f"{entry.entry_id}_report_time"
-        self._attr_name = "Report Time"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        self._setup_spintouch_device(coordinator, entry, "report_time", "Report Time")
 
     async def async_added_to_hass(self) -> None:
         """Restore state on startup."""
         await super().async_added_to_hass()
 
-        # Only restore if not already set
-        last_state = await self.async_get_last_state()
-        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
-            try:
-                restored_dt = dt_util.parse_datetime(last_state.state)
-                if restored_dt and self.coordinator.data and not self.coordinator.data.report_time:
-                    self.coordinator.data.report_time = restored_dt
-            except (ValueError, TypeError):
-                pass
+        restored_dt = await restore_datetime_state(self)
+        if restored_dt and self.coordinator.data and not self.coordinator.data.report_time:
+            self.coordinator.data.report_time = restored_dt
 
     @property
     def native_value(self) -> datetime | None:
         """Return the report timestamp from SpinTouch."""
         data: SpinTouchData | None = self.coordinator.data
-        if data and data.report_time:
-            return data.report_time
-        return None
+        return data.report_time if data else None
 
     @property
     def available(self) -> bool:
-        """Return if entity is available (has data from BLE or restored state)."""
+        """Return if entity is available."""
         return self.coordinator.data is not None and self.coordinator.data.report_time is not None
 
 
 class SpinTouchWaterQualitySensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     SensorEntity,  # type: ignore[misc]
 ):
@@ -337,16 +294,7 @@ class SpinTouchWaterQualitySensor(
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-
-        self._attr_unique_id = f"{entry.entry_id}_water_quality"
-        self._attr_name = "Water Quality"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        self._setup_spintouch_device(coordinator, entry, "water_quality", "Water Quality")
 
     def _get_issues(self) -> dict[str, dict[str, Any]]:
         """Get all parameters that are out of range."""
@@ -377,22 +325,17 @@ class SpinTouchWaterQualitySensor(
 
     @property
     def native_value(self) -> str:
-        """Return water quality status.
-
-        Returns "OK" if all parameters are in range, otherwise returns
-        comma-separated list of problem parameter short names.
-        """
+        """Return water quality status."""
         issues = self._get_issues()
 
         if not issues:
             return "OK"
 
         # Build list of short names with direction indicator
-        problem_names: list[str] = []
-        for key, info in issues.items():
-            short_name = PARAMETER_SHORT_NAMES.get(key, key)
-            direction = "↓" if info["status"] == "low" else "↑"
-            problem_names.append(f"{short_name} {direction}")
+        problem_names = [
+            f"{PARAMETER_SHORT_NAMES.get(key, key)} {'↓' if info['status'] == 'low' else '↑'}"
+            for key, info in issues.items()
+        ]
 
         return ", ".join(problem_names)
 
@@ -401,20 +344,17 @@ class SpinTouchWaterQualitySensor(
         """Return detailed information about water quality."""
         issues = self._get_issues()
 
-        attributes: dict[str, Any] = {
-            "issues_count": len(issues),
-        }
+        attributes: dict[str, Any] = {"issues_count": len(issues)}
 
         if issues:
-            # Format issues for attributes
-            formatted_issues: dict[str, dict[str, Any]] = {}
-            for key, info in issues.items():
-                formatted_issues[key] = {
+            attributes["issues"] = {
+                key: {
                     "value": info["value"],
                     "status": info["status"],
                     "target_range": f"{info['min']}-{info['max']}",
                 }
-            attributes["issues"] = formatted_issues
+                for key, info in issues.items()
+            }
 
         return attributes
 
@@ -430,5 +370,5 @@ class SpinTouchWaterQualitySensor(
 
     @property
     def available(self) -> bool:
-        """Return if entity is available (has data from BLE or restored state)."""
+        """Return if entity is available."""
         return self.coordinator.data is not None and bool(self.coordinator.data.values)

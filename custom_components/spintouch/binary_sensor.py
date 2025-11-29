@@ -9,9 +9,9 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .base import SpinTouchEntity
 from .const import DOMAIN
 from .coordinator import SpinTouchCoordinator
 
@@ -29,15 +29,16 @@ async def async_setup_entry(
     """Set up SpinTouch binary sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities: list[BinarySensorEntity] = [
-        SpinTouchConnectedSensor(coordinator, entry),
-        SpinTouchConnectionEnabledSensor(coordinator, entry),
-    ]
-
-    async_add_entities(entities)
+    async_add_entities(
+        [
+            SpinTouchConnectedSensor(coordinator, entry),
+            SpinTouchConnectionEnabledSensor(coordinator, entry),
+        ]
+    )
 
 
 class SpinTouchConnectedSensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     BinarySensorEntity,  # type: ignore[misc]
 ):
@@ -54,16 +55,7 @@ class SpinTouchConnectedSensor(
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-
-        self._attr_unique_id = f"{entry.entry_id}_connected"
-        self._attr_name = "Connected"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        self._setup_spintouch_device(coordinator, entry, "connected", "Connected")
 
     @property
     def is_on(self) -> bool:
@@ -72,6 +64,7 @@ class SpinTouchConnectedSensor(
 
 
 class SpinTouchConnectionEnabledSensor(
+    SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
     BinarySensorEntity,  # type: ignore[misc]
 ):
@@ -88,16 +81,7 @@ class SpinTouchConnectionEnabledSensor(
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-
-        self._attr_unique_id = f"{entry.entry_id}_connection_enabled"
-        self._attr_name = "Connection Enabled"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        self._setup_spintouch_device(coordinator, entry, "connection_enabled", "Connection Enabled")
 
     @property
     def is_on(self) -> bool:

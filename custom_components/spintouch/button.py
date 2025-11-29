@@ -6,16 +6,16 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .base import SpinTouchEntity
 from .const import DOMAIN
+from .coordinator import SpinTouchCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
-
-    from .coordinator import SpinTouchCoordinator
 
 
 async def async_setup_entry(
@@ -33,7 +33,11 @@ async def async_setup_entry(
     )
 
 
-class SpinTouchForceReconnectButton(ButtonEntity):  # type: ignore[misc]
+class SpinTouchForceReconnectButton(
+    SpinTouchEntity,
+    CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
+    ButtonEntity,  # type: ignore[misc]
+):
     """Button to force reconnection to SpinTouch."""
 
     _attr_has_entity_name = True
@@ -46,18 +50,9 @@ class SpinTouchForceReconnectButton(ButtonEntity):  # type: ignore[misc]
         entry: ConfigEntry,
     ) -> None:
         """Initialize the button."""
-        self._coordinator = coordinator
-
-        self._attr_unique_id = f"{entry.entry_id}_force_reconnect"
-        self._attr_name = "Force Reconnect"
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=coordinator.device_name,
-            manufacturer="LaMotte",
-            model="WaterLink Spin Touch",
-        )
+        super().__init__(coordinator)
+        self._setup_spintouch_device(coordinator, entry, "force_reconnect", "Force Reconnect")
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self._coordinator.async_force_reconnect()
+        await self.coordinator.async_force_reconnect()

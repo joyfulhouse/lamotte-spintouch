@@ -17,11 +17,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-
 from .const import (
     ACK_CHARACTERISTIC_UUID,
     DATA_CHARACTERISTIC_UUID,
@@ -43,8 +38,18 @@ from .const import (
     TIMESTAMP_OFFSET,
     TIMESTAMP_SIZE,
 )
+from .util import TimerManager
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 _LOGGER = logging.getLogger(__name__)
+
+# Timer names for the coordinator
+TIMER_DISCONNECT = "disconnect"
+TIMER_RECONNECT = "reconnect"
 
 
 class SpinTouchData:
@@ -54,27 +59,21 @@ class SpinTouchData:
         """Initialize data container."""
         self.values: dict[str, float | None] = {}
         self.last_reading_time: datetime | None = None
-        self.report_time: datetime | None = None  # Timestamp from SpinTouch report
+        self.report_time: datetime | None = None
         self.connected: bool = False
         self.connection_enabled: bool = True
-        self.detected_param_ids: set[int] = set()  # Track which param_ids are present
+        self.detected_param_ids: set[int] = set()
 
-        # Metadata from BLE data (from decompiled app)
-        self.num_valid_results: int = 0  # Byte 84: number of valid test results
-        self.disk_type_index: int | None = None  # Byte 85: index into discStr array
-        self.sanitizer_type_index: int | None = None  # Byte 86: index into sanStr array
-        self.disk_type: str | None = None  # Human-readable disk type
-        self.sanitizer_type: str | None = None  # Human-readable sanitizer type
+        # Metadata from BLE data
+        self.num_valid_results: int = 0
+        self.disk_type_index: int | None = None
+        self.sanitizer_type_index: int | None = None
+        self.disk_type: str | None = None
+        self.sanitizer_type: str | None = None
 
     @property
     def detected_disk_series(self) -> str | None:
-        """Auto-detect disk series based on which param_ids are present.
-
-        Detection logic:
-        - 0x03 (Bromine) present → Disk 203
-        - 0x01/0x02 (Chlorine) present, no 0x0E → Disk 303 or 304
-        - 0x0E present, no chlorine/bromine → Disk 204
-        """
+        """Auto-detect disk series based on which param_ids are present."""
         if not self.detected_param_ids:
             return None
 
@@ -83,13 +82,11 @@ class SpinTouchData:
         has_borate_0e = 0x0E in self.detected_param_ids
 
         if has_bromine:
-            return "203"  # Bromine disk
+            return "203"
         if has_chlorine and not has_borate_0e:
-            return "303"  # Chlorine disk (303 or 304, default to 303)
+            return "303"
         if has_borate_0e and not has_chlorine and not has_bromine:
-            return "204"  # Chlorine-free disk
-
-        # Default to 303 if we have chlorine
+            return "204"
         if has_chlorine:
             return "303"
 
@@ -97,13 +94,6 @@ class SpinTouchData:
 
     def update_from_bytes(self, data: bytes) -> bool:
         """Parse BLE data and update values.
-
-        Data format (from decompiled TestStructure.Parse()):
-        - Bytes 0-3: Start signature [0x01, 0x02, 0x03, 0x05]
-        - Bytes 4-75: 12 test results x 6 bytes [TestType, Decimals, float32_le]
-        - Bytes 76-83: Timestamp [YY, MM, DD, HH, MM, SS, AM/PM, Military]
-        - Bytes 84-86: Metadata [num_valid, disk_type, sanitizer_type]
-        - Bytes 87-90: End signature [0x07, 0x0B, 0x0D, 0x11]
 
         Returns True if data was valid AND represents a new report.
         """
@@ -113,7 +103,29 @@ class SpinTouchData:
 
         _LOGGER.debug("Parsing %d bytes of SpinTouch data", len(data))
 
-        # Validate start signature
+        if not self._validate_signatures(data):
+            return False
+
+        self._parse_metadata(data)
+
+        old_report_time = self.report_time
+        self._parse_report_timestamp(data)
+
+        if old_report_time is not None and self.report_time == old_report_time:
+            _LOGGER.debug("Report timestamp unchanged, skipping update")
+            return False
+
+        entries_parsed = self._parse_entries(data)
+        _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
+
+        self._log_disk_info()
+        self._calculate_derived_values()
+
+        self.last_reading_time = dt_util.utcnow()
+        return True
+
+    def _validate_signatures(self, data: bytes) -> bool:
+        """Validate start and end signatures."""
         if data[:HEADER_SIZE] != START_SIGNATURE:
             _LOGGER.warning(
                 "Invalid start signature: %s (expected %s)",
@@ -122,7 +134,6 @@ class SpinTouchData:
             )
             return False
 
-        # Validate end signature (if data is long enough)
         if len(data) >= END_SIGNATURE_OFFSET + 4:
             end_sig = data[END_SIGNATURE_OFFSET : END_SIGNATURE_OFFSET + 4]
             if end_sig != END_SIGNATURE:
@@ -133,37 +144,10 @@ class SpinTouchData:
                 )
                 # Continue anyway - signature check is informational
 
-        # Parse metadata first (disk type, sanitizer type, valid count)
-        self._parse_metadata(data)
-
-        # Parse report timestamp to check if this is new data
-        old_report_time = self.report_time
-        self._parse_report_timestamp(data)
-
-        # If report timestamp hasn't changed, this is the same data - skip update
-        if old_report_time is not None and self.report_time == old_report_time:
-            _LOGGER.debug("Report timestamp unchanged, skipping update")
-            return False
-
-        # Parse parameter entries
-        entries_parsed = self._parse_entries(data)
-        _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
-
-        # Log disk info
-        self._log_disk_info()
-
-        # Calculate derived values
-        self._calculate_derived_values()
-
-        self.last_reading_time = dt_util.utcnow()
         return True
 
     def _parse_entries(self, data: bytes) -> int:
-        """Parse parameter entries from BLE data.
-
-        Format: 6-byte entries [TestType, Decimals, float32_le]
-        Returns number of entries parsed.
-        """
+        """Parse parameter entries from BLE data."""
         offset = HEADER_SIZE
         entries_parsed = 0
 
@@ -171,7 +155,6 @@ class SpinTouchData:
             test_type = data[offset]
             decimals = data[offset + 1]
 
-            # End of entries marker (00-00)
             if test_type == 0 and decimals == 0:
                 break
 
@@ -183,7 +166,6 @@ class SpinTouchData:
 
     def _parse_single_entry(self, data: bytes, offset: int, test_type: int, decimals: int) -> None:
         """Parse a single test result entry."""
-        # Track all param_ids we see for disk detection
         self.detected_param_ids.add(test_type)
 
         sensor = PARAM_ID_TO_SENSOR.get(test_type)
@@ -260,7 +242,6 @@ class SpinTouchData:
         self.disk_type_index = data[METADATA_OFFSET + 1]
         self.sanitizer_type_index = data[METADATA_OFFSET + 2]
 
-        # Look up human-readable names
         self.disk_type = DISK_TYPE_MAP.get(
             self.disk_type_index, f"Unknown ({self.disk_type_index})"
         )
@@ -278,18 +259,7 @@ class SpinTouchData:
         )
 
     def _parse_report_timestamp(self, data: bytes) -> None:
-        """Parse the report timestamp from BLE data.
-
-        Format (from decompiled TestTime class):
-        - Byte 0: Year (2-digit, add 2000)
-        - Byte 1: Month (1-12)
-        - Byte 2: Day (1-31)
-        - Byte 3: Hour (1-12 or 0-23)
-        - Byte 4: Minute (0-59)
-        - Byte 5: Seconds (0-59)
-        - Byte 6: AM/PM flag (0=AM, 1=PM)
-        - Byte 7: Military flag (0=12h, 1=24h)
-        """
+        """Parse the report timestamp from BLE data."""
         if len(data) < TIMESTAMP_OFFSET + TIMESTAMP_SIZE:
             _LOGGER.warning("Data too short for timestamp parsing")
             return
@@ -305,21 +275,13 @@ class SpinTouchData:
             military = data[TIMESTAMP_OFFSET + 7]
 
             # Convert 12h to 24h if not military time
-            if military == 0:  # 12-hour format
-                if ampm == 1 and hour < 12:  # PM
+            if military == 0:
+                if ampm == 1 and hour < 12:
                     hour += 12
-                elif ampm == 0 and hour == 12:  # 12 AM = 0
+                elif ampm == 0 and hour == 12:
                     hour = 0
 
-            # Validate all ranges at once
-            if not (
-                2020 <= year <= 2099
-                and 1 <= month <= 12
-                and 1 <= day <= 31
-                and 0 <= hour <= 23
-                and 0 <= minute <= 59
-                and 0 <= second <= 59
-            ):
+            if not self._is_valid_timestamp(year, month, day, hour, minute, second):
                 _LOGGER.warning(
                     "Invalid timestamp values: %d-%02d-%02d %02d:%02d:%02d",
                     year,
@@ -331,7 +293,6 @@ class SpinTouchData:
                 )
                 return
 
-            # Create timezone-aware datetime (assume local time from device)
             local_tz = dt_util.get_default_time_zone()
             naive_dt = dt_module.datetime(year, month, day, hour, minute, second)
             self.report_time = naive_dt.replace(tzinfo=local_tz)
@@ -345,18 +306,31 @@ class SpinTouchData:
         except (ValueError, IndexError) as err:
             _LOGGER.warning("Failed to parse report timestamp: %s", err)
 
+    @staticmethod
+    def _is_valid_timestamp(
+        year: int, month: int, day: int, hour: int, minute: int, second: int
+    ) -> bool:
+        """Validate timestamp component ranges."""
+        return (
+            2020 <= year <= 2099
+            and 1 <= month <= 12
+            and 1 <= day <= 31
+            and 0 <= hour <= 23
+            and 0 <= minute <= 59
+            and 0 <= second <= 59
+        )
+
 
 class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignore[misc]
     """Coordinator for SpinTouch BLE device.
 
-    Connection lifecycle (mirrors ESPHome behavior):
+    Connection lifecycle:
     1. Auto-connect when device is discovered via Bluetooth advertisement
     2. Stay connected and listen for status notifications
     3. When data is received, start disconnect timer
     4. After DISCONNECT_DELAY (10s) with no new data, disconnect
     5. Stay disconnected for RECONNECT_DELAY (5 min) to allow phone app
     6. After reconnect delay, enable connection again
-    7. Will reconnect when next Bluetooth advertisement is seen
     """
 
     def __init__(
@@ -370,7 +344,6 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             hass,
             _LOGGER,
             name=DOMAIN,
-            # Don't poll - we use push notifications from the device
             update_interval=None,
         )
         self.address = address
@@ -378,14 +351,13 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self._client: BleakClient | None = None
         self._data = SpinTouchData()
 
-        # Connection lifecycle timers
-        self._disconnect_timer: asyncio.TimerHandle | None = None
-        self._reconnect_timer: asyncio.TimerHandle | None = None
+        # Timer manager for disconnect/reconnect scheduling
+        self._timers = TimerManager(hass, _LOGGER)
 
         # Connection state flags
         self._expected_disconnect = False
-        self._stay_disconnected = False  # True during reconnect delay period
-        self._reading_received = False  # Reset by disconnect timer
+        self._stay_disconnected = False
+        self._reading_received = False
         self._connect_lock = asyncio.Lock()
 
     @property
@@ -401,7 +373,6 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
     async def async_connect(self) -> bool:
         """Connect to the SpinTouch device."""
-        # Don't connect if we're in the "stay disconnected" period
         if self._stay_disconnected:
             _LOGGER.debug(
                 "Skipping connection - in reconnect delay period (allowing phone app access)"
@@ -432,7 +403,6 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                     disconnected_callback=self._on_disconnect,
                 )
 
-                # Subscribe to status notifications
                 await self._client.start_notify(
                     STATUS_CHARACTERISTIC_UUID,
                     self._on_status_notification,
@@ -457,7 +427,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
     async def async_disconnect(self) -> None:
         """Disconnect from the SpinTouch device."""
-        self._cancel_disconnect_timer()
+        self._timers.cancel(TIMER_DISCONNECT)
         self._expected_disconnect = True
 
         if self._client and self._client.is_connected:
@@ -474,7 +444,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
     async def async_force_reconnect(self) -> None:
         """Force reconnection - cancels reconnect delay and connects immediately."""
         _LOGGER.info("Force reconnect requested")
-        self._cancel_reconnect_timer()
+        self._timers.cancel(TIMER_RECONNECT)
         self._stay_disconnected = False
         self._reading_received = False
         self._data.connection_enabled = True
@@ -493,24 +463,16 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self._data.connected = False
         self.async_set_updated_data(self._data)
 
-        # If unexpected disconnect and not in stay_disconnected period, try to reconnect
         if not self._expected_disconnect and not self._stay_disconnected:
             _LOGGER.info("Unexpected disconnect - will reconnect on next advertisement")
 
     def _on_status_notification(self, _sender: int, _data: bytearray) -> None:
         """Handle status notification from SpinTouch."""
         _LOGGER.debug("Status notification received, reading data...")
-        # Schedule data read on the event loop
         self.hass.async_create_task(self._async_read_data())
 
     async def _async_read_data(self) -> None:
-        """Read data from the SpinTouch device.
-
-        Per decompiled app (OnCharacteristicRead):
-        1. Read data from TTEST characteristic
-        2. Parse with TestStructure.Parse()
-        3. Send ACK byte (0x01) to TESTACK characteristic
-        """
+        """Read data from the SpinTouch device."""
         if not self._client or not self._client.is_connected:
             _LOGGER.warning("Cannot read data - not connected")
             return
@@ -530,7 +492,6 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                     self._data.values.get("salt", 0),
                 )
 
-                # Send ACK to device (per decompiled app protocol)
                 await self._async_send_ack()
 
                 self._reading_received = True
@@ -543,10 +504,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             _LOGGER.error("Failed to read data: %s", err)
 
     async def _async_send_ack(self) -> None:
-        """Send acknowledgment to SpinTouch device.
-
-        Per decompiled app: WriteCharacteristic(SpinTestAckCharacteristic, new byte[1] { 0x01 })
-        """
+        """Send acknowledgment to SpinTouch device."""
         if not self._client or not self._client.is_connected:
             return
 
@@ -555,27 +513,12 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             _LOGGER.debug("Sent ACK to SpinTouch")
         except BleakError as err:
             _LOGGER.warning("Failed to send ACK: %s", err)
-            # Non-fatal - continue even if ACK fails
 
     def _schedule_disconnect(self) -> None:
-        """Schedule disconnect after delay to allow phone app access.
-
-        This mirrors the ESPHome script behavior:
-        1. Wait DISCONNECT_DELAY seconds
-        2. If reading_received is still True (no new readings reset it), disconnect
-        3. Stay disconnected for RECONNECT_DELAY seconds
-        4. Then re-enable connections
-        """
-        # Cancel any existing timer and restart (mode: restart behavior)
-        self._cancel_disconnect_timer()
-
-        # Mark that we received a reading - will be checked when timer fires
+        """Schedule disconnect after delay to allow phone app access."""
         self._reading_received = True
 
-        @callback  # type: ignore[misc]
         def _disconnect_callback() -> None:
-            # Only disconnect if we still have reading_received=True
-            # (if new data came in, the timer was restarted)
             if self._reading_received:
                 _LOGGER.info(
                     "No new data after %ds, disconnecting to allow phone app access",
@@ -586,8 +529,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                 self.async_set_updated_data(self._data)
                 self.hass.async_create_task(self._async_disconnect_and_schedule_reconnect())
 
-        self._disconnect_timer = self.hass.loop.call_later(DISCONNECT_DELAY, _disconnect_callback)
-        _LOGGER.debug("Disconnect timer scheduled for %ds", DISCONNECT_DELAY)
+        self._timers.schedule(TIMER_DISCONNECT, DISCONNECT_DELAY, _disconnect_callback)
 
     async def _async_disconnect_and_schedule_reconnect(self) -> None:
         """Disconnect and schedule reconnection after delay."""
@@ -596,9 +538,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
     def _schedule_reconnect(self) -> None:
         """Schedule reconnection after RECONNECT_DELAY."""
-        self._cancel_reconnect_timer()
 
-        @callback  # type: ignore[misc]
         def _reconnect_callback() -> None:
             _LOGGER.info(
                 "Reconnect delay (%ds) expired, re-enabling connection",
@@ -609,28 +549,14 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             self._data.connection_enabled = True
             self.async_set_updated_data(self._data)
 
-            # Try to connect - the BLE proxy may be able to reach the device
-            # even without a recent advertisement
             _LOGGER.info("Attempting to reconnect to %s", self.address)
             self.hass.async_create_task(self.async_connect())
 
-        self._reconnect_timer = self.hass.loop.call_later(RECONNECT_DELAY, _reconnect_callback)
+        self._timers.schedule(TIMER_RECONNECT, RECONNECT_DELAY, _reconnect_callback)
         _LOGGER.info(
             "Reconnect scheduled in %ds (phone app can connect now)",
             RECONNECT_DELAY,
         )
-
-    def _cancel_disconnect_timer(self) -> None:
-        """Cancel the disconnect timer."""
-        if self._disconnect_timer:
-            self._disconnect_timer.cancel()
-            self._disconnect_timer = None
-
-    def _cancel_reconnect_timer(self) -> None:
-        """Cancel the reconnect timer."""
-        if self._reconnect_timer:
-            self._reconnect_timer.cancel()
-            self._reconnect_timer = None
 
     @callback  # type: ignore[misc]
     def async_handle_bluetooth_event(
@@ -649,7 +575,6 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         )
         self._service_info = service_info
 
-        # Auto-connect when device is seen (if not in stay_disconnected period)
         if (
             not self._data.connected
             and not self._stay_disconnected
