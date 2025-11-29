@@ -571,6 +571,17 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         cases where BLE advertisement callbacks aren't reliably delivered.
         """
 
+        async def _try_connect_or_reschedule() -> None:
+            """Try to connect, reschedule visibility checks if failed."""
+            success = await self.async_connect()
+            if not success and not self._data.connected:
+                # Connection failed, keep checking
+                _LOGGER.info(
+                    "Connection failed, will retry in %ds",
+                    VISIBILITY_CHECK_INTERVAL,
+                )
+                self._schedule_visibility_check()
+
         def _visibility_check_callback() -> None:
             # Check if device is now visible
             device = bluetooth.async_ble_device_from_address(
@@ -581,7 +592,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                     "Device %s now visible, attempting connection",
                     self.address,
                 )
-                self.hass.async_create_task(self.async_connect())
+                self.hass.async_create_task(_try_connect_or_reschedule())
             else:
                 # Device not visible, schedule another check
                 _LOGGER.debug(
