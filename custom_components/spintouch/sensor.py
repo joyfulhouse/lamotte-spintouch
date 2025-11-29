@@ -64,6 +64,7 @@ async def async_setup_entry(
 
     # Diagnostic sensors
     entities.append(SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry))
+    entities.append(SpinTouchReportTimeSensor(coordinator=coordinator, entry=entry))
 
     async_add_entities(entities)
 
@@ -155,4 +156,41 @@ class SpinTouchLastReadingSensor(
         data: SpinTouchData | None = self.coordinator.data
         if data and data.last_reading_time:
             return data.last_reading_time
+        return None
+
+
+class SpinTouchReportTimeSensor(
+    CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
+    SensorEntity,  # type: ignore[misc]
+):
+    """Sensor showing the test report timestamp from SpinTouch device."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clipboard-clock-outline"
+
+    def __init__(
+        self,
+        coordinator: SpinTouchCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        self._attr_unique_id = f"{entry.entry_id}_report_time"
+        self._attr_name = "Report Time"
+
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.address)},
+            name=coordinator.device_name,
+            manufacturer="LaMotte",
+            model="WaterLink Spin Touch",
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the report timestamp from SpinTouch."""
+        data: SpinTouchData | None = self.coordinator.data
+        if data and data.report_time:
+            return data.report_time
         return None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt_module
 import logging
 import math
 import struct
@@ -28,15 +29,13 @@ from .const import (
     RECONNECT_DELAY,
     SENSORS,
     STATUS_CHARACTERISTIC_UUID,
+    TIMESTAMP_OFFSET,
 )
-
-if TYPE_CHECKING:
-    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 _LOGGER = logging.getLogger(__name__)
 
-# Minimum data size for valid reading
-MIN_DATA_SIZE = 70
+# Minimum data size for valid reading (need at least 82 bytes for timestamp)
+MIN_DATA_SIZE = 82
 
 
 class SpinTouchData:
@@ -46,6 +45,7 @@ class SpinTouchData:
         """Initialize data container."""
         self.values: dict[str, float | None] = {}
         self.last_reading_time: datetime | None = None
+        self.report_time: datetime | None = None  # Timestamp from SpinTouch report
         self.connected: bool = False
         self.connection_enabled: bool = True
 
@@ -101,8 +101,52 @@ class SpinTouchData:
         if fc is not None and cya is not None and cya > 0:
             self.values["fc_cya_ratio"] = round((fc / cya) * 100, 1)
 
+        # Parse report timestamp from bytes 76-81 (YY-MM-DD-HH-MM-SS)
+        self._parse_report_timestamp(data)
+
         self.last_reading_time = dt_util.utcnow()
         return True
+
+    def _parse_report_timestamp(self, data: bytes) -> None:
+        """Parse the report timestamp from BLE data."""
+        if len(data) < TIMESTAMP_OFFSET + 6:
+            _LOGGER.warning("Data too short for timestamp parsing")
+            return
+
+        try:
+            year = 2000 + data[TIMESTAMP_OFFSET]
+            month = data[TIMESTAMP_OFFSET + 1]
+            day = data[TIMESTAMP_OFFSET + 2]
+            hour = data[TIMESTAMP_OFFSET + 3]
+            minute = data[TIMESTAMP_OFFSET + 4]
+            second = data[TIMESTAMP_OFFSET + 5]
+
+            # Validate all ranges at once
+            if not (
+                2020 <= year <= 2099
+                and 1 <= month <= 12
+                and 1 <= day <= 31
+                and 0 <= hour <= 23
+                and 0 <= minute <= 59
+                and 0 <= second <= 59
+            ):
+                _LOGGER.warning(
+                    "Invalid timestamp values: %d-%02d-%02d %02d:%02d:%02d",
+                    year, month, day, hour, minute, second,
+                )
+                return
+
+            # Create timezone-aware datetime (assume local time from device)
+            local_tz = dt_util.get_default_time_zone()
+            naive_dt = dt_module.datetime(year, month, day, hour, minute, second)
+            self.report_time = naive_dt.replace(tzinfo=local_tz)
+
+            _LOGGER.debug(
+                "Report timestamp: %s",
+                self.report_time.isoformat(),
+            )
+        except (ValueError, IndexError) as err:
+            _LOGGER.warning("Failed to parse report timestamp: %s", err)
 
 
 class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignore[misc]

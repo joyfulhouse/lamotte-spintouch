@@ -29,9 +29,14 @@ class ParamId(IntEnum):
     ALKALINITY = 0x07
     CYANURIC_ACID = 0x0A
     IRON = 0x0B
-    SALT = 0x0C
+    SALT_LOW = 0x0C  # Low range salt (flags=0x01)
     PHOSPHATE = 0x0D
     CALCIUM_HARDNESS = 0x0F
+    SALT = 0x10  # Primary salt reading
+
+
+# Timestamp offset in BLE data (bytes 76-81: YY-MM-DD-HH-MM-SS)
+TIMESTAMP_OFFSET = 76
 
 
 @dataclass
@@ -116,7 +121,7 @@ SENSORS: list[SensorDefinition] = [
         unit="ppm",
         icon="mdi:shaker",
         decimals=0,
-        offset=48,
+        offset=66,  # param_id 0x10 - primary salt reading
         min_valid=0,
         max_valid=10000,
     ),
