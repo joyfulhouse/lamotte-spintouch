@@ -132,7 +132,12 @@ class SpinTouchData:
             ):
                 _LOGGER.warning(
                     "Invalid timestamp values: %d-%02d-%02d %02d:%02d:%02d",
-                    year, month, day, hour, minute, second,
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                    second,
                 )
                 return
 
@@ -384,7 +389,23 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             self._reading_received = False
             self._data.connection_enabled = True
             self.async_set_updated_data(self._data)
-            # Will reconnect when next Bluetooth advertisement is seen
+
+            # Check if device is currently visible - if so, connect immediately
+            # This handles the case where device advertised during stay_disconnected period
+            service_info = bluetooth.async_last_service_info(
+                self.hass, self.address, connectable=True
+            )
+            if service_info:
+                _LOGGER.info(
+                    "Device %s is currently visible, attempting connection",
+                    self.address,
+                )
+                self.hass.async_create_task(self.async_connect())
+            else:
+                _LOGGER.debug(
+                    "Device %s not currently visible, will connect when seen",
+                    self.address,
+                )
 
         self._reconnect_timer = self.hass.loop.call_later(RECONNECT_DELAY, _reconnect_callback)
         _LOGGER.info(
