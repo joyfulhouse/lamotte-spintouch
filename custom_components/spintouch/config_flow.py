@@ -10,7 +10,7 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 
-from .const import DOMAIN, SERVICE_UUID
+from .const import CONF_DISK_SERIES, DEFAULT_DISK_SERIES, DISK_SERIES_OPTIONS, DOMAIN, SERVICE_UUID
 
 if TYPE_CHECKING:
     from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -49,7 +49,7 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
     async def async_step_bluetooth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm discovery."""
+        """Confirm discovery and select disk series."""
         if self._discovery_info is None:
             return self.async_abort(reason="no_device")
 
@@ -57,12 +57,27 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
             return self.async_create_entry(
                 title=self._discovery_info.name
                 or f"SpinTouch {self._discovery_info.address[-8:].replace(':', '')}",
-                data={CONF_ADDRESS: self._discovery_info.address},
+                data={
+                    CONF_ADDRESS: self._discovery_info.address,
+                    CONF_DISK_SERIES: user_input.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES),
+                },
             )
 
-        self._set_confirm_only()
+        # Build disk series options with chemical names
+        disk_options = {
+            series: f"Disk {series} ({chemical})"
+            for series, chemical in DISK_SERIES_OPTIONS.items()
+        }
+
         return self.async_show_form(
             step_id="bluetooth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
+                        disk_options
+                    ),
+                }
+            ),
             description_placeholders={
                 "name": self._discovery_info.name or "SpinTouch",
                 "address": self._discovery_info.address,
@@ -75,6 +90,7 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
 
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
+            disk_series = user_input.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
 
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
@@ -84,13 +100,13 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
                 return self.async_create_entry(
                     title=self._discovered_devices[address].name
                     or f"SpinTouch {address[-8:].replace(':', '')}",
-                    data={CONF_ADDRESS: address},
+                    data={CONF_ADDRESS: address, CONF_DISK_SERIES: disk_series},
                 )
             else:
                 # Manual entry - create anyway
                 return self.async_create_entry(
                     title=f"SpinTouch {address[-8:].replace(':', '')}",
-                    data={CONF_ADDRESS: address},
+                    data={CONF_ADDRESS: address, CONF_DISK_SERIES: disk_series},
                 )
 
         # Scan for SpinTouch devices
@@ -100,6 +116,12 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
             if SERVICE_UUID.lower() in [uuid.lower() for uuid in service_info.service_uuids]:
                 self._discovered_devices[service_info.address] = service_info
 
+        # Build disk series options with chemical names
+        disk_options = {
+            series: f"Disk {series} ({chemical})"
+            for series, chemical in DISK_SERIES_OPTIONS.items()
+        }
+
         if self._discovered_devices:
             # Show picker for discovered devices
             addresses = {
@@ -108,7 +130,14 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
             }
             return self.async_show_form(
                 step_id="user",
-                data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(addresses)}),
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(CONF_ADDRESS): vol.In(addresses),
+                        vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
+                            disk_options
+                        ),
+                    }
+                ),
                 errors=errors,
             )
         else:
@@ -118,6 +147,9 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
                 data_schema=vol.Schema(
                     {
                         vol.Required(CONF_ADDRESS): str,
+                        vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
+                            disk_options
+                        ),
                     }
                 ),
                 errors=errors,

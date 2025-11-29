@@ -7,6 +7,16 @@ from enum import IntEnum
 
 DOMAIN = "spintouch"
 
+# Configuration
+CONF_DISK_SERIES = "disk_series"
+
+# Supported disk series and their param 0x0D chemical
+DISK_SERIES_OPTIONS = {
+    "203": "Phosphate",
+    "303": "Borate",
+}
+DEFAULT_DISK_SERIES = "303"
+
 # BLE UUIDs
 SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"
 DATA_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000010"
@@ -136,10 +146,10 @@ SENSORS: list[SensorDefinition] = [
         max_valid=10,
     ),
     SensorDefinition(
-        key="phosphate",
-        name="Phosphate",
+        key="param_0d",  # Phosphate (disk 203) or Borate (disk 303) - depends on disk series
+        name="Borate",  # Default name, overridden based on disk_series config
         unit="ppb",
-        icon="mdi:leaf",
+        icon="mdi:flask-outline",
         decimals=1,
         offset=60,
         min_valid=0,

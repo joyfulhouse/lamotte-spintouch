@@ -15,7 +15,14 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CALCULATED_SENSORS, DOMAIN, SENSORS
+from .const import (
+    CALCULATED_SENSORS,
+    CONF_DISK_SERIES,
+    DEFAULT_DISK_SERIES,
+    DISK_SERIES_OPTIONS,
+    DOMAIN,
+    SENSORS,
+)
 from .coordinator import SpinTouchCoordinator, SpinTouchData
 
 # Short display names for water quality status
@@ -47,16 +54,24 @@ async def async_setup_entry(
     """Set up SpinTouch sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
+    # Get disk series from config (default to 303)
+    disk_series = entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
+
     entities: list[SensorEntity] = []
 
     # Primary sensors from BLE data
     for sensor_def in SENSORS:
+        # Override name for param_0d based on disk series
+        name = sensor_def.name
+        if sensor_def.key == "param_0d":
+            name = DISK_SERIES_OPTIONS.get(disk_series, "Borate")
+
         entities.append(
             SpinTouchSensor(
                 coordinator=coordinator,
                 entry=entry,
                 key=sensor_def.key,
-                name=sensor_def.name,
+                name=name,
                 unit=sensor_def.unit,
                 icon=sensor_def.icon,
                 decimals=sensor_def.decimals,
