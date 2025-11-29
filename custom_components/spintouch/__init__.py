@@ -33,17 +33,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up SpinTouch at %s", address)
 
     # Get initial service info if device is currently visible
-    service_info = bluetooth.async_last_service_info(hass, address, connectable=True)
+    # Try connectable first, then non-connectable
+    service_info = bluetooth.async_last_service_info(
+        hass, address, connectable=True
+    ) or bluetooth.async_last_service_info(hass, address, connectable=False)
+
+    if service_info:
+        _LOGGER.info("Found SpinTouch in Bluetooth cache (RSSI: %s)", service_info.rssi)
+    else:
+        _LOGGER.info("SpinTouch not currently visible via Bluetooth")
 
     coordinator = SpinTouchCoordinator(hass, address, service_info)
 
     # Register for Bluetooth callbacks when device is seen
+    # Use PASSIVE mode as ESPHome proxies typically do passive scanning
     entry.async_on_unload(
         bluetooth.async_register_callback(
             hass,
             coordinator.async_handle_bluetooth_event,
             BluetoothCallbackMatcher({ADDRESS: address}),
-            BluetoothScanningMode.ACTIVE,
+            BluetoothScanningMode.PASSIVE,
         )
     )
 

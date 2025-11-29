@@ -392,9 +392,10 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
             # Check if device is currently visible - if so, connect immediately
             # This handles the case where device advertised during stay_disconnected period
+            # Check both connectable and non-connectable advertisements
             service_info = bluetooth.async_last_service_info(
                 self.hass, self.address, connectable=True
-            )
+            ) or bluetooth.async_last_service_info(self.hass, self.address, connectable=False)
             if service_info:
                 _LOGGER.info(
                     "Device %s is currently visible, attempting connection",
