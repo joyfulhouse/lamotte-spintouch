@@ -37,6 +37,7 @@ from .const import (
     STATUS_CHARACTERISTIC_UUID,
     TIMESTAMP_OFFSET,
     TIMESTAMP_SIZE,
+    UNEXPECTED_RECONNECT_DELAY,
 )
 from .util import TimerManager
 
@@ -50,6 +51,7 @@ _LOGGER = logging.getLogger(__name__)
 # Timer names for the coordinator
 TIMER_DISCONNECT = "disconnect"
 TIMER_RECONNECT = "reconnect"
+TIMER_UNEXPECTED_RECONNECT = "unexpected_reconnect"
 
 
 class SpinTouchData:
@@ -464,7 +466,8 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self.async_set_updated_data(self._data)
 
         if not self._expected_disconnect and not self._stay_disconnected:
-            _LOGGER.info("Unexpected disconnect - will reconnect on next advertisement")
+            _LOGGER.info("Unexpected disconnect - scheduling reconnect attempt")
+            self._schedule_unexpected_reconnect()
 
     def _on_status_notification(self, _sender: int, _data: bytearray) -> None:
         """Handle status notification from SpinTouch."""
@@ -556,6 +559,31 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         _LOGGER.info(
             "Reconnect scheduled in %ds (phone app can connect now)",
             RECONNECT_DELAY,
+        )
+
+    def _schedule_unexpected_reconnect(self) -> None:
+        """Schedule reconnection after unexpected disconnect.
+
+        Unlike the normal reconnect delay (5 min for phone app access),
+        this uses a short delay to quickly restore connection after
+        unexpected BLE disconnects (interference, distance, etc.).
+        """
+
+        def _unexpected_reconnect_callback() -> None:
+            _LOGGER.info(
+                "Attempting reconnect after unexpected disconnect (delay: %ds)",
+                UNEXPECTED_RECONNECT_DELAY,
+            )
+            self.hass.async_create_task(self.async_connect())
+
+        self._timers.schedule(
+            TIMER_UNEXPECTED_RECONNECT,
+            UNEXPECTED_RECONNECT_DELAY,
+            _unexpected_reconnect_callback,
+        )
+        _LOGGER.debug(
+            "Unexpected reconnect scheduled in %ds",
+            UNEXPECTED_RECONNECT_DELAY,
         )
 
     @callback  # type: ignore[misc]

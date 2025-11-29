@@ -36,6 +36,7 @@ ACK_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000013"  # SPIN_TOUCH_T
 # Connection settings
 DISCONNECT_DELAY = 10  # seconds after reading before disconnect
 RECONNECT_DELAY = 300  # seconds to wait before reconnecting (5 min)
+UNEXPECTED_RECONNECT_DELAY = 5  # seconds to wait before reconnecting after unexpected disconnect
 
 # Data parsing constants (from TestStructure.Parse() in decompiled app)
 # Total structure: 91 bytes
