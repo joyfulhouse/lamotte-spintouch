@@ -2,10 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Select SpinTouch Device",
-        "description": "Select your LaMotte WaterLink Spin Touch device from the list.",
+        "title": "SpinTouch Device",
+        "description": "Enter the Bluetooth MAC address of your SpinTouch device (e.g., {example}). You can find this using the nRF Connect app on your phone.",
         "data": {
-          "address": "Device"
+          "address": "MAC Address"
         }
       },
       "bluetooth_confirm": {

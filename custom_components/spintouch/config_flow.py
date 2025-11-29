@@ -67,13 +67,18 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the user step to pick a device."""
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
-            await self.async_set_unique_id(address, raise_on_progress=False)
+            await self.async_set_unique_id(address.upper(), raise_on_progress=False)
             self._abort_if_unique_id_configured()
-            discovery_info = self._discovered_devices[address]
+
+            # Check if it's a discovered device or manual entry
+            if address in self._discovered_devices:
+                title = self._discovered_devices[address].name
+            else:
+                title = f"SpinTouch ({address.upper()})"
 
             return self.async_create_entry(
-                title=discovery_info.name,
-                data={},
+                title=title,
+                data={CONF_ADDRESS: address.upper()},
             )
 
         # Discover SpinTouch devices
@@ -88,19 +93,31 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
             ):
                 self._discovered_devices[discovery_info.address] = discovery_info
 
-        if not self._discovered_devices:
-            return self.async_abort(reason="no_devices_found")
+        # If devices found, show picker. Otherwise show manual entry.
+        if self._discovered_devices:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(CONF_ADDRESS): vol.In(
+                            {
+                                address: f"{info.name} ({address})"
+                                for address, info in self._discovered_devices.items()
+                            }
+                        ),
+                    }
+                ),
+            )
 
+        # No devices found - allow manual MAC address entry
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_ADDRESS): vol.In(
-                        {
-                            address: f"{info.name} ({address})"
-                            for address, info in self._discovered_devices.items()
-                        }
-                    ),
+                    vol.Required(CONF_ADDRESS): str,
                 }
             ),
+            description_placeholders={
+                "example": "AA:BB:CC:DD:EE:FF",
+            },
         )

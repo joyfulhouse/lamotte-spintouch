@@ -19,9 +19,15 @@ esp32:
   framework:
     type: esp-idf
 
-# Enable logging
+# Enable logging (set to DEBUG to see BLE advertisements)
 logger:
   level: INFO
+  logs:
+    esp32_ble_tracker: INFO
+
+# Web server for viewing logs at http://<device-ip>/
+web_server:
+  port: 80
 
 # Enable Home Assistant API
 api:
@@ -45,10 +51,22 @@ wifi:
 bluetooth_proxy:
   active: true
 
-# Enable Bluetooth tracker to discover devices
+# Enable Bluetooth tracker - filtered to SpinTouch devices only
 esp32_ble_tracker:
   scan_parameters:
     active: true
+    interval: 1100ms
+    window: 1100ms
+  on_ble_advertise:
+    - then:
+        - lambda: |-
+            // Only log SpinTouch devices
+            if (x.get_name().rfind("SpinTouch", 0) == 0) {
+              ESP_LOGI("spintouch", "Found: %s (%s) RSSI: %d",
+                x.get_name().c_str(),
+                x.address_str().c_str(),
+                x.get_rssi());
+            }
 
 # Basic device sensors
 sensor:

@@ -43,3 +43,4 @@ ENV/
 # Home Assistant
 config/
 .HA_VERSION
+.DS_Store
