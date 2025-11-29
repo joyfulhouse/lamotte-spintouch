@@ -29,12 +29,16 @@ from .coordinator import SpinTouchCoordinator, SpinTouchData
 PARAMETER_SHORT_NAMES: dict[str, str] = {
     "free_chlorine": "FC",
     "total_chlorine": "TC",
+    "bromine": "Br",
     "ph": "pH",
     "alkalinity": "Alk",
     "calcium": "Ca",
     "cyanuric_acid": "CYA",
+    "copper": "Cu",
     "iron": "Fe",
     "phosphate": "Phos",
+    "borate": "Bor",
+    "param_0d": "P/B",  # Phosphate or Borate depending on disk
     "salt": "Salt",
 }
 

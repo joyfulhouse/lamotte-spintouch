@@ -26,8 +26,11 @@ from .const import (
     DATA_CHARACTERISTIC_UUID,
     DISCONNECT_DELAY,
     DOMAIN,
+    ENTRY_SIZE,
+    HEADER_SIZE,
+    MAX_ENTRIES,
+    PARAM_ID_TO_SENSOR,
     RECONNECT_DELAY,
-    SENSORS,
     STATUS_CHARACTERISTIC_UUID,
     TIMESTAMP_OFFSET,
 )
@@ -52,6 +55,9 @@ class SpinTouchData:
     def update_from_bytes(self, data: bytes) -> bool:
         """Parse BLE data and update values.
 
+        Parses by scanning for param_ids at 6-byte boundaries, not fixed offsets.
+        This ensures compatibility with all disk series.
+
         Returns True if data was valid AND represents a new report (different timestamp).
         """
         if len(data) < MIN_DATA_SIZE:
@@ -69,34 +75,71 @@ class SpinTouchData:
             _LOGGER.debug("Report timestamp unchanged, skipping update")
             return False
 
-        for sensor in SENSORS:
-            try:
-                # Extract float32 little-endian from offset
-                value = struct.unpack_from("<f", data, sensor.offset)[0]
+        # Parse parameter entries by scanning param_ids
+        # Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+        offset = HEADER_SIZE
+        entries_parsed = 0
 
-                # Validate the value
-                if (
-                    value is not None
-                    and not math.isnan(value)
-                    and sensor.min_valid <= value <= sensor.max_valid
-                ):
-                    self.values[sensor.key] = round(value, sensor.decimals)
-                    _LOGGER.debug(
-                        "%s: %.2f %s",
-                        sensor.name,
-                        value,
-                        sensor.unit or "",
+        while offset + ENTRY_SIZE <= len(data) and entries_parsed < MAX_ENTRIES:
+            param_id = data[offset]
+            flags = data[offset + 1]
+
+            # End of entries marker (00-00)
+            if param_id == 0 and flags == 0:
+                _LOGGER.debug("End of entries at offset %d", offset)
+                break
+
+            # Look up sensor definition for this param_id
+            sensor = PARAM_ID_TO_SENSOR.get(param_id)
+
+            if sensor:
+                try:
+                    # Extract float32 little-endian from offset+2
+                    value = struct.unpack_from("<f", data, offset + 2)[0]
+
+                    # Validate the value
+                    if (
+                        value is not None
+                        and not math.isnan(value)
+                        and sensor.min_valid <= value <= sensor.max_valid
+                    ):
+                        self.values[sensor.key] = round(value, sensor.decimals)
+                        _LOGGER.debug(
+                            "Param 0x%02X -> %s: %.2f %s (flags=0x%02X)",
+                            param_id,
+                            sensor.name,
+                            value,
+                            sensor.unit or "",
+                            flags,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Param 0x%02X -> %s: invalid value %s (range: %s-%s)",
+                            param_id,
+                            sensor.name,
+                            value,
+                            sensor.min_valid,
+                            sensor.max_valid,
+                        )
+                except struct.error as err:
+                    _LOGGER.error(
+                        "Failed to parse param 0x%02X at offset %d: %s",
+                        param_id,
+                        offset,
+                        err,
                     )
-                else:
-                    _LOGGER.warning(
-                        "Invalid %s value: %s (valid range: %s-%s)",
-                        sensor.name,
-                        value,
-                        sensor.min_valid,
-                        sensor.max_valid,
-                    )
-            except struct.error as err:
-                _LOGGER.error("Failed to parse %s: %s", sensor.name, err)
+            else:
+                _LOGGER.debug(
+                    "Unknown param_id 0x%02X at offset %d (flags=0x%02X)",
+                    param_id,
+                    offset,
+                    flags,
+                )
+
+            offset += ENTRY_SIZE
+            entries_parsed += 1
+
+        _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
 
         # Calculate derived values
         fc = self.values.get("free_chlorine")
