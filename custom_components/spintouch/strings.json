@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select SpinTouch Device",
+        "description": "Select your LaMotte WaterLink Spin Touch device from the list.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Confirm SpinTouch Device",
+        "description": "Do you want to set up {name}?"
+      }
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_devices_found": "No SpinTouch devices found. Make sure your device is powered on and within Bluetooth range."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Free Chlorine"
+      },
+      "total_chlorine": {
+        "name": "Total Chlorine"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Total Alkalinity"
+      },
+      "calcium_hardness": {
+        "name": "Calcium Hardness"
+      },
+      "cyanuric_acid": {
+        "name": "Cyanuric Acid"
+      },
+      "salt": {
+        "name": "Salt"
+      },
+      "iron": {
+        "name": "Iron"
+      },
+      "phosphate": {
+        "name": "Phosphate"
+      },
+      "last_test_time": {
+        "name": "Last Test Time"
+      }
+    }
+  }
+}

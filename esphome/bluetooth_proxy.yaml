@@ -1,0 +1,69 @@
+# ESPHome Bluetooth Proxy for LaMotte WaterLink Spin Touch
+#
+# This configuration creates a simple Bluetooth Proxy that forwards
+# BLE traffic to Home Assistant. The SpinTouch integration handles
+# all data parsing.
+#
+# Flash this to an ESP32 device within Bluetooth range of your SpinTouch.
+
+substitutions:
+  device_name: spintouch-proxy
+  friendly_name: SpinTouch Bluetooth Proxy
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret fallback_password
+
+# Bluetooth Proxy - forwards all BLE traffic to Home Assistant
+bluetooth_proxy:
+  active: true
+
+# Enable Bluetooth tracker to discover devices
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+# Basic device sensors
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+# Status LED (optional - adjust pin for your board)
+# status_led:
+#   pin: GPIO2
+
+button:
+  - platform: restart
+    name: "Restart"

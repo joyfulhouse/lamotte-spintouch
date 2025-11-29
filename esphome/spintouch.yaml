@@ -1,0 +1,297 @@
+# ESPHome Configuration for LaMotte SpinTouch Water Tester
+#
+# This configuration reads water quality test results from a SpinTouch device
+# via Bluetooth Low Energy (BLE) and exposes them as Home Assistant sensors.
+#
+# GATT Profile discovered via nRF Connect on 2025-11-28
+# See research/GATT_PROFILE.md for protocol details
+
+substitutions:
+  device_name: spintouch-reader
+  friendly_name: SpinTouch Reader
+  # UPDATE with your SpinTouch MAC address (find via nRF Connect or ESPHome logs)
+  spintouch_mac: "BB:BD:05:0B:2D:1F"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret fallback_password
+
+# BLE Client for SpinTouch
+ble_client:
+  - mac_address: ${spintouch_mac}
+    id: spintouch_client
+    on_connect:
+      then:
+        - logger.log: "Connected to SpinTouch"
+        - delay: 1s
+        - lambda: |-
+            // Trigger initial read of test results
+            id(read_test_results).execute();
+    on_disconnect:
+      then:
+        - logger.log: "Disconnected from SpinTouch"
+
+# Script to read test results
+script:
+  - id: read_test_results
+    then:
+      - ble_client.ble_write:
+          id: spintouch_client
+          service_uuid: "00000000-0000-1000-8000-bbbd00000000"
+          characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
+          # Just reading, no write needed - the sensor will trigger
+
+# Global variables to store parsed values
+globals:
+  - id: last_update_timestamp
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+# Template sensors to hold the parsed water quality values
+sensor:
+  # WiFi Signal Strength
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  # Uptime
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+  # BLE sensor that reads the test results characteristic
+  - platform: ble_client
+    ble_client_id: spintouch_client
+    name: "SpinTouch Raw Data"
+    id: spintouch_raw
+    internal: true
+    service_uuid: "00000000-0000-1000-8000-bbbd00000000"
+    characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
+    update_interval: 60s
+    lambda: |-
+      // Parse the raw BLE data (112 bytes)
+      // Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+
+      if (x.size() < 70) {
+        ESP_LOGW("spintouch", "Data too short: %d bytes", x.size());
+        return NAN;
+      }
+
+      ESP_LOGD("spintouch", "Received %d bytes from SpinTouch", x.size());
+
+      // Parse each parameter
+      // Offset 4: Free Chlorine (param_id 0x01)
+      float free_chlorine = *reinterpret_cast<const float*>(&x[6]);
+      id(sensor_free_chlorine).publish_state(free_chlorine);
+
+      // Offset 10: Total Chlorine (param_id 0x02)
+      float total_chlorine = *reinterpret_cast<const float*>(&x[12]);
+      id(sensor_total_chlorine).publish_state(total_chlorine);
+
+      // Offset 22: pH (param_id 0x06)
+      float ph = *reinterpret_cast<const float*>(&x[24]);
+      id(sensor_ph).publish_state(ph);
+
+      // Offset 28: Total Alkalinity (param_id 0x07)
+      float alkalinity = *reinterpret_cast<const float*>(&x[30]);
+      id(sensor_alkalinity).publish_state(alkalinity);
+
+      // Offset 34: Calcium Hardness (param_id 0x0F)
+      float calcium = *reinterpret_cast<const float*>(&x[36]);
+      id(sensor_calcium).publish_state(calcium);
+
+      // Offset 40: Cyanuric Acid (param_id 0x0A)
+      float cya = *reinterpret_cast<const float*>(&x[42]);
+      id(sensor_cya).publish_state(cya);
+
+      // Offset 46: Salt (param_id 0x0C)
+      float salt = *reinterpret_cast<const float*>(&x[48]);
+      id(sensor_salt).publish_state(salt);
+
+      // Offset 52: Iron (param_id 0x0B)
+      float iron = *reinterpret_cast<const float*>(&x[54]);
+      id(sensor_iron).publish_state(iron);
+
+      // Offset 58: Phosphate (param_id 0x0D)
+      float phosphate = *reinterpret_cast<const float*>(&x[60]);
+      id(sensor_phosphate).publish_state(phosphate);
+
+      // Timestamp at offset 74-79 (BCD: YY-MM-DD-HH-MM-SS)
+      if (x.size() >= 80) {
+        uint8_t year = x[74];
+        uint8_t month = x[75];
+        uint8_t day = x[76];
+        uint8_t hour = x[77];
+        uint8_t minute = x[78];
+        uint8_t second = x[79];
+
+        // Format as ISO 8601 datetime string
+        char timestamp[20];
+        snprintf(timestamp, sizeof(timestamp), "20%02d-%02d-%02dT%02d:%02d:%02d",
+                 year, month, day, hour, minute, second);
+        id(sensor_last_test_time).publish_state(timestamp);
+
+        ESP_LOGI("spintouch", "Test date: %s", timestamp);
+      }
+
+      return free_chlorine;  // Return something for the sensor
+
+  # Individual water quality sensors (populated by the lambda above)
+  - platform: template
+    name: "Free Chlorine"
+    id: sensor_free_chlorine
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    device_class: ""
+    state_class: measurement
+
+  - platform: template
+    name: "Total Chlorine"
+    id: sensor_total_chlorine
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    state_class: measurement
+
+  - platform: template
+    name: "pH"
+    id: sensor_ph
+    unit_of_measurement: ""
+    accuracy_decimals: 2
+    icon: "mdi:ph"
+    state_class: measurement
+
+  - platform: template
+    name: "Total Alkalinity"
+    id: sensor_alkalinity
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:water"
+    state_class: measurement
+
+  - platform: template
+    name: "Calcium Hardness"
+    id: sensor_calcium
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:water"
+    state_class: measurement
+
+  - platform: template
+    name: "Cyanuric Acid"
+    id: sensor_cya
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:shield-sun"
+    state_class: measurement
+
+  - platform: template
+    name: "Salt"
+    id: sensor_salt
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:shaker"
+    state_class: measurement
+
+  - platform: template
+    name: "Iron"
+    id: sensor_iron
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 3
+    icon: "mdi:iron"
+    state_class: measurement
+
+  - platform: template
+    name: "Phosphate"
+    id: sensor_phosphate
+    unit_of_measurement: "ppb"
+    accuracy_decimals: 1
+    icon: "mdi:leaf"
+    state_class: measurement
+
+# Status notification sensor
+text_sensor:
+  - platform: ble_client
+    ble_client_id: spintouch_client
+    name: "SpinTouch Status"
+    id: spintouch_status
+    service_uuid: "00000000-0000-1000-8000-bbbd00000000"
+    characteristic_uuid: "00000000-0000-1000-8000-bbbd00000011"
+    notify: true
+    lambda: |-
+      if (x.size() > 0) {
+        uint8_t status = x[0];
+        switch (status) {
+          case 0x01: return std::string("Initializing");
+          case 0x02: return std::string("Ready");
+          case 0x03: return std::string("Testing");
+          case 0x04: return std::string("Complete");
+          case 0x05: return std::string("Error");
+          case 0x06: return std::string("Idle");
+          default: return std::string("Unknown");
+        }
+      }
+      return std::string("Unknown");
+
+  # Last test timestamp (populated by the BLE data lambda)
+  - platform: template
+    name: "Last Test Time"
+    id: sensor_last_test_time
+    icon: "mdi:clock-outline"
+    device_class: timestamp
+
+  # Device connection status
+  - platform: template
+    name: "SpinTouch Connection"
+    id: connection_status
+    lambda: |-
+      if (id(spintouch_client).connected()) {
+        return std::string("Connected");
+      }
+      return std::string("Disconnected");
+    update_interval: 10s
+
+# Button to manually refresh readings
+button:
+  - platform: template
+    name: "Refresh Readings"
+    on_press:
+      then:
+        - script.execute: read_test_results
+
+# Binary sensor for connection status
+binary_sensor:
+  - platform: template
+    name: "SpinTouch Connected"
+    lambda: |-
+      return id(spintouch_client).connected();
+    device_class: connectivity

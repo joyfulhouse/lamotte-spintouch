@@ -1,0 +1,18 @@
+{
+  "domain": "spintouch",
+  "name": "LaMotte WaterLink Spin Touch",
+  "codeowners": ["@joyfulhouse", "@btli"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/joyfulhouse/lamotte-spintouch",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/joyfulhouse/lamotte-spintouch/issues",
+  "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=3.0.0"],
+  "bluetooth": [
+    {
+      "local_name": "SpinTouch*"
+    }
+  ],
+  "version": "0.1a1"
+}
