@@ -368,21 +368,23 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
         try:
             data = await self._client.read_gatt_char(DATA_CHARACTERISTIC_UUID)
-            _LOGGER.debug("Received %d bytes from SpinTouch", len(data))
+            _LOGGER.info("Received %d bytes from SpinTouch", len(data))
 
             if self._data.update_from_bytes(bytes(data)):
                 _LOGGER.info(
-                    "SpinTouch reading: FC=%.2f TC=%.2f pH=%.2f Alk=%.0f Ca=%.0f CYA=%.0f",
+                    "SpinTouch NEW reading: FC=%.2f pH=%.2f Alk=%.0f Ca=%.0f CYA=%.0f Salt=%.0f",
                     self._data.values.get("free_chlorine", 0),
-                    self._data.values.get("total_chlorine", 0),
                     self._data.values.get("ph", 0),
                     self._data.values.get("alkalinity", 0),
                     self._data.values.get("calcium", 0),
                     self._data.values.get("cyanuric_acid", 0),
+                    self._data.values.get("salt", 0),
                 )
                 self._reading_received = True
                 self.async_set_updated_data(self._data)
                 self._schedule_disconnect()
+            else:
+                _LOGGER.info("SpinTouch data unchanged (same report timestamp), skipping update")
 
         except BleakError as err:
             _LOGGER.error("Failed to read data: %s", err)
