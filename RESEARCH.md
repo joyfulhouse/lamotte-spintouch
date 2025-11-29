@@ -1,8 +1,7 @@
-# SpinTouch BLE GATT Profile
+# SpinTouch Research & Protocol Documentation
 
-Discovered via nRF Connect on 2025-11-28, updated 2025-11-29.
-APK reverse engineering added 2025-11-29.
-**Full decompilation completed 2025-11-29** - authoritative protocol details from C# source.
+BLE GATT profile discovered via nRF Connect on 2025-11-28.
+APK reverse engineering and full decompilation completed 2025-11-29.
 
 ## Device Information
 
