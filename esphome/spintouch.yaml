@@ -1,297 +1,659 @@
-# ESPHome Configuration for LaMotte SpinTouch Water Tester
-#
-# This configuration reads water quality test results from a SpinTouch device
-# via Bluetooth Low Energy (BLE) and exposes them as Home Assistant sensors.
-#
-# GATT Profile discovered via nRF Connect on 2025-11-28
-# See research/GATT_PROFILE.md for protocol details
+# SpinTouch Reader - ESPHome Configuration
+# LaMotte SpinTouch Water Quality Sensor Integration
 
 substitutions:
-  device_name: spintouch-reader
+  # Device settings
+  device_name: spintouch
   friendly_name: SpinTouch Reader
-  # UPDATE with your SpinTouch MAC address (find via nRF Connect or ESPHome logs)
+
+  # SpinTouch BLE MAC address
+  # To find your device's MAC: power on SpinTouch, check logs or
+  # "Detected SpinTouch MAC" sensor - it auto-detects by service UUID
   spintouch_mac: "BB:BD:05:0B:2D:1F"
+
+  # Ideal ranges for pool water (customize as needed)
+  # Free Chlorine
+  fc_min: "1.0"
+  fc_max: "3.0"
+  # pH
+  ph_min: "7.2"
+  ph_max: "7.6"
+  # Total Alkalinity
+  alk_min: "80"
+  alk_max: "120"
+  # Calcium Hardness
+  ca_min: "200"
+  ca_max: "400"
+  # Cyanuric Acid
+  cya_min: "30"
+  cya_max: "50"
+  # Salt (for saltwater pools, 0 for non-salt)
+  salt_min: "2700"
+  salt_max: "3400"
+  # Iron
+  iron_max: "0.3"
+  # Phosphate (ppb)
+  phosphate_max: "100"
 
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
 
 esp32:
-  board: esp32dev
+  board: lolin_c3_mini
+  variant: ESP32C3
   framework:
     type: esp-idf
+
+# Required for BLE on ESP32-C3 with esp-idf
+esp32_ble:
+  io_capability: display_only
+  max_connections: 4
+
+bluetooth_proxy:
+  active: true
 
 # Enable logging
 logger:
   level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+
+# Web server for viewing logs and configuration
+web_server:
+  port: 80
 
 # Enable Home Assistant API
 api:
   encryption:
-    key: !secret api_encryption_key
+    key: "VoUIKaHLLXLy3roUCaGniTV1VIoarur7cDJFE+0ev6Y="
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: "eb225ab78ac30f5bc9470be969070ed0"
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-  # Enable fallback hotspot
   ap:
-    ssid: "${device_name} Fallback"
-    password: !secret fallback_password
+    ssid: "SpinTouch Fallback Hotspot"
+    password: "mKiFYXwq4Gws"
 
-# BLE Client for SpinTouch
-ble_client:
-  - mac_address: ${spintouch_mac}
-    id: spintouch_client
-    on_connect:
-      then:
-        - logger.log: "Connected to SpinTouch"
-        - delay: 1s
-        - lambda: |-
-            // Trigger initial read of test results
-            id(read_test_results).execute();
-    on_disconnect:
-      then:
-        - logger.log: "Disconnected from SpinTouch"
+# Time sync for timestamps
+time:
+  - platform: homeassistant
+    id: ha_time
 
-# Script to read test results
-script:
-  - id: read_test_results
-    then:
-      - ble_client.ble_write:
-          id: spintouch_client
-          service_uuid: "00000000-0000-1000-8000-bbbd00000000"
-          characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
-          # Just reading, no write needed - the sensor will trigger
-
-# Global variables to store parsed values
+# Global variables for state tracking and persistence
 globals:
-  - id: last_update_timestamp
-    type: uint32_t
+  - id: reading_received
+    type: bool
     restore_value: no
+    initial_value: 'false'
+
+  - id: last_reading_timestamp
+    type: uint32_t
+    restore_value: yes
     initial_value: '0'
 
-# Template sensors to hold the parsed water quality values
-sensor:
-  # WiFi Signal Strength
-  - platform: wifi_signal
-    name: "WiFi Signal"
-    update_interval: 60s
+  # Persistent sensor values (survive reboot)
+  - id: g_free_chlorine
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-  # Uptime
-  - platform: uptime
-    name: "Uptime"
-    update_interval: 60s
+  - id: g_total_chlorine
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-  # BLE sensor that reads the test results characteristic
-  - platform: ble_client
-    ble_client_id: spintouch_client
-    name: "SpinTouch Raw Data"
-    id: spintouch_raw
-    internal: true
-    service_uuid: "00000000-0000-1000-8000-bbbd00000000"
-    characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
-    update_interval: 60s
-    lambda: |-
-      // Parse the raw BLE data (112 bytes)
-      // Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+  - id: g_ph
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      if (x.size() < 70) {
-        ESP_LOGW("spintouch", "Data too short: %d bytes", x.size());
-        return NAN;
-      }
+  - id: g_alkalinity
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      ESP_LOGD("spintouch", "Received %d bytes from SpinTouch", x.size());
+  - id: g_calcium
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      // Parse each parameter
-      // Offset 4: Free Chlorine (param_id 0x01)
-      float free_chlorine = *reinterpret_cast<const float*>(&x[6]);
-      id(sensor_free_chlorine).publish_state(free_chlorine);
+  - id: g_cya
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      // Offset 10: Total Chlorine (param_id 0x02)
-      float total_chlorine = *reinterpret_cast<const float*>(&x[12]);
-      id(sensor_total_chlorine).publish_state(total_chlorine);
+  - id: g_salt
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      // Offset 22: pH (param_id 0x06)
-      float ph = *reinterpret_cast<const float*>(&x[24]);
-      id(sensor_ph).publish_state(ph);
+  - id: g_iron
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      // Offset 28: Total Alkalinity (param_id 0x07)
-      float alkalinity = *reinterpret_cast<const float*>(&x[30]);
-      id(sensor_alkalinity).publish_state(alkalinity);
+  - id: g_phosphate
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
 
-      // Offset 34: Calcium Hardness (param_id 0x0F)
-      float calcium = *reinterpret_cast<const float*>(&x[36]);
-      id(sensor_calcium).publish_state(calcium);
+# BLE tracking with SpinTouch auto-discovery
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 100ms
+    window: 100ms
+    continuous: true
+  on_ble_service_advertise:
+    # Auto-detect SpinTouch devices by service UUID
+    - service_uuid: "00000000-0000-1000-8000-bbbd00000000"
+      then:
+        - lambda: |-
+            ESP_LOGW("spintouch", ">>> SPINTOUCH DETECTED: %s (RSSI: %d) <<<",
+                     x.address_str().c_str(), x.get_rssi());
+        - text_sensor.template.publish:
+            id: detected_spintouch_mac
+            state: !lambda 'return x.address_str();'
 
-      // Offset 40: Cyanuric Acid (param_id 0x0A)
-      float cya = *reinterpret_cast<const float*>(&x[42]);
-      id(sensor_cya).publish_state(cya);
+# BLE Client - connects to SpinTouch
+ble_client:
+  - mac_address: ${spintouch_mac}
+    id: spintouch
+    auto_connect: true
+    on_connect:
+      then:
+        - text_sensor.template.publish:
+            id: last_connection_time
+            state: !lambda 'return id(ha_time).now().strftime("%Y-%m-%d %H:%M:%S");'
+        - logger.log:
+            level: WARN
+            format: "=== CONNECTED TO SPINTOUCH - Ready to receive ==="
+    on_disconnect:
+      then:
+        - logger.log:
+            level: WARN
+            format: "=== DISCONNECTED FROM SPINTOUCH ==="
 
-      // Offset 46: Salt (param_id 0x0C)
-      float salt = *reinterpret_cast<const float*>(&x[48]);
-      id(sensor_salt).publish_state(salt);
+# Scripts for managing connection lifecycle
+script:
+  - id: handle_reading_received
+    mode: restart
+    then:
+      - lambda: |-
+          id(reading_received) = true;
+          id(last_reading_timestamp) = id(ha_time).now().timestamp;
+      - text_sensor.template.publish:
+          id: last_reading_time
+          state: !lambda 'return id(ha_time).now().strftime("%Y-%m-%d %H:%M:%S");'
+      - logger.log:
+          level: INFO
+          format: "Reading received, starting disconnect timer..."
+      # Wait for disconnect delay (no new data timeout)
+      - delay: !lambda 'return id(disconnect_delay).state * 1000;'
+      - if:
+          condition:
+            lambda: 'return id(reading_received);'
+          then:
+            - logger.log:
+                level: WARN
+                format: "No new data after timeout, disconnecting to allow phone app access..."
+            - lambda: |-
+                id(spintouch).set_enabled(false);
+            # Wait for reconnect delay before allowing reconnection
+            - delay: !lambda 'return id(reconnect_delay).state * 1000;'
+            - logger.log:
+                level: WARN
+                format: "Reconnect delay expired, re-enabling connection..."
+            - lambda: |-
+                id(reading_received) = false;
+                id(spintouch).set_enabled(true);
 
-      // Offset 52: Iron (param_id 0x0B)
-      float iron = *reinterpret_cast<const float*>(&x[54]);
-      id(sensor_iron).publish_state(iron);
-
-      // Offset 58: Phosphate (param_id 0x0D)
-      float phosphate = *reinterpret_cast<const float*>(&x[60]);
-      id(sensor_phosphate).publish_state(phosphate);
-
-      // Timestamp at offset 74-79 (BCD: YY-MM-DD-HH-MM-SS)
-      if (x.size() >= 80) {
-        uint8_t year = x[74];
-        uint8_t month = x[75];
-        uint8_t day = x[76];
-        uint8_t hour = x[77];
-        uint8_t minute = x[78];
-        uint8_t second = x[79];
-
-        // Format as ISO 8601 datetime string
-        char timestamp[20];
-        snprintf(timestamp, sizeof(timestamp), "20%02d-%02d-%02dT%02d:%02d:%02d",
-                 year, month, day, hour, minute, second);
-        id(sensor_last_test_time).publish_state(timestamp);
-
-        ESP_LOGI("spintouch", "Test date: %s", timestamp);
-      }
-
-      return free_chlorine;  // Return something for the sensor
-
-  # Individual water quality sensors (populated by the lambda above)
+# Configurable settings (accessible via Web UI)
+number:
   - platform: template
-    name: "Free Chlorine"
-    id: sensor_free_chlorine
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 2
-    icon: "mdi:flask"
-    device_class: ""
-    state_class: measurement
-
-  - platform: template
-    name: "Total Chlorine"
-    id: sensor_total_chlorine
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 2
-    icon: "mdi:flask"
-    state_class: measurement
-
-  - platform: template
-    name: "pH"
-    id: sensor_ph
-    unit_of_measurement: ""
-    accuracy_decimals: 2
-    icon: "mdi:ph"
-    state_class: measurement
-
-  - platform: template
-    name: "Total Alkalinity"
-    id: sensor_alkalinity
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 1
-    icon: "mdi:water"
-    state_class: measurement
-
-  - platform: template
-    name: "Calcium Hardness"
-    id: sensor_calcium
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 1
-    icon: "mdi:water"
-    state_class: measurement
-
-  - platform: template
-    name: "Cyanuric Acid"
-    id: sensor_cya
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 1
-    icon: "mdi:shield-sun"
-    state_class: measurement
+    name: "Disconnect Delay"
+    id: disconnect_delay
+    min_value: 5
+    max_value: 120
+    step: 1
+    initial_value: 10
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    icon: "mdi:timer-off"
+    entity_category: config
 
   - platform: template
-    name: "Salt"
-    id: sensor_salt
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 2
-    icon: "mdi:shaker"
-    state_class: measurement
+    name: "Reconnect Delay"
+    id: reconnect_delay
+    min_value: 60
+    max_value: 1800
+    step: 60
+    initial_value: 300
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    icon: "mdi:timer"
+    entity_category: config
 
-  - platform: template
-    name: "Iron"
-    id: sensor_iron
-    unit_of_measurement: "ppm"
-    accuracy_decimals: 3
-    icon: "mdi:iron"
-    state_class: measurement
-
-  - platform: template
-    name: "Phosphate"
-    id: sensor_phosphate
-    unit_of_measurement: "ppb"
-    accuracy_decimals: 1
-    icon: "mdi:leaf"
-    state_class: measurement
-
-# Status notification sensor
+# Diagnostic text sensors
 text_sensor:
+  - platform: template
+    name: "Last Reading Time"
+    id: last_reading_time
+    icon: "mdi:clock-outline"
+
+  - platform: template
+    name: "Last Connection Time"
+    id: last_connection_time
+    icon: "mdi:bluetooth-connect"
+    entity_category: diagnostic
+
+  - platform: template
+    name: "Detected SpinTouch MAC"
+    id: detected_spintouch_mac
+    icon: "mdi:bluetooth-search"
+    entity_category: diagnostic
+
+# Sensors from SpinTouch
+sensor:
+  # Status notifications - triggers read when SpinTouch sends data
   - platform: ble_client
-    ble_client_id: spintouch_client
+    type: characteristic
+    ble_client_id: spintouch
     name: "SpinTouch Status"
     id: spintouch_status
+    internal: true
     service_uuid: "00000000-0000-1000-8000-bbbd00000000"
     characteristic_uuid: "00000000-0000-1000-8000-bbbd00000011"
     notify: true
     lambda: |-
       if (x.size() > 0) {
-        uint8_t status = x[0];
-        switch (status) {
-          case 0x01: return std::string("Initializing");
-          case 0x02: return std::string("Ready");
-          case 0x03: return std::string("Testing");
-          case 0x04: return std::string("Complete");
-          case 0x05: return std::string("Error");
-          case 0x06: return std::string("Idle");
-          default: return std::string("Unknown");
-        }
+        ESP_LOGW("spintouch", "Status notification received, reading results...");
+        id(spintouch_raw).update();
       }
-      return std::string("Unknown");
+      return 0;
 
-  # Last test timestamp (populated by the BLE data lambda)
-  - platform: template
-    name: "Last Test Time"
-    id: sensor_last_test_time
-    icon: "mdi:clock-outline"
-    device_class: timestamp
-
-  # Device connection status
-  - platform: template
-    name: "SpinTouch Connection"
-    id: connection_status
+  # Main BLE sensor - reads test results when triggered
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: spintouch
+    name: "SpinTouch Raw"
+    id: spintouch_raw
+    internal: true
+    service_uuid: "00000000-0000-1000-8000-bbbd00000000"
+    characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
+    update_interval: never
     lambda: |-
-      if (id(spintouch_client).connected()) {
-        return std::string("Connected");
+      if (x.size() < 70) {
+        ESP_LOGW("spintouch", "Data too short: %d bytes", x.size());
+        return NAN;
       }
-      return std::string("Disconnected");
-    update_interval: 10s
+      ESP_LOGI("spintouch", "Received %d bytes", x.size());
 
-# Button to manually refresh readings
-button:
+      // Helper lambda to validate float values
+      auto is_valid = [](float v) -> bool {
+        return !isnan(v) && !isinf(v) && v >= -10000 && v <= 100000;
+      };
+
+      // Parse all parameters from BLE data
+      // Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+
+      // Offset 4: Free Chlorine (0x01)
+      float fc = *reinterpret_cast<const float*>(&x[6]);
+      if (is_valid(fc) && fc >= 0 && fc <= 20) {
+        id(g_free_chlorine) = fc;
+        id(free_chlorine).publish_state(fc);
+      } else {
+        ESP_LOGW("spintouch", "Invalid FC value: %.2f", fc);
+      }
+
+      // Offset 10: Total Chlorine (0x02)
+      float tc = *reinterpret_cast<const float*>(&x[12]);
+      if (is_valid(tc) && tc >= 0 && tc <= 20) {
+        id(g_total_chlorine) = tc;
+        id(total_chlorine).publish_state(tc);
+      } else {
+        ESP_LOGW("spintouch", "Invalid TC value: %.2f", tc);
+      }
+
+      // Offset 22: pH (0x06)
+      float ph = *reinterpret_cast<const float*>(&x[24]);
+      if (is_valid(ph) && ph >= 0 && ph <= 14) {
+        id(g_ph) = ph;
+        id(ph_sensor).publish_state(ph);
+      } else {
+        ESP_LOGW("spintouch", "Invalid pH value: %.2f", ph);
+      }
+
+      // Offset 28: Alkalinity (0x07)
+      float alk = *reinterpret_cast<const float*>(&x[30]);
+      if (is_valid(alk) && alk >= 0 && alk <= 500) {
+        id(g_alkalinity) = alk;
+        id(alkalinity).publish_state(alk);
+      } else {
+        ESP_LOGW("spintouch", "Invalid Alkalinity value: %.2f", alk);
+      }
+
+      // Offset 34: Calcium Hardness (0x0F)
+      float ca = *reinterpret_cast<const float*>(&x[36]);
+      if (is_valid(ca) && ca >= 0 && ca <= 1000) {
+        id(g_calcium) = ca;
+        id(calcium).publish_state(ca);
+      } else {
+        ESP_LOGW("spintouch", "Invalid Calcium value: %.2f", ca);
+      }
+
+      // Offset 40: Cyanuric Acid (0x0A)
+      float cya = *reinterpret_cast<const float*>(&x[42]);
+      if (is_valid(cya) && cya >= 0 && cya <= 300) {
+        id(g_cya) = cya;
+        id(cya_sensor).publish_state(cya);
+      } else {
+        ESP_LOGW("spintouch", "Invalid CYA value: %.2f", cya);
+      }
+
+      // Offset 46: Salt (0x0C)
+      float salt = *reinterpret_cast<const float*>(&x[48]);
+      if (is_valid(salt) && salt >= 0 && salt <= 10000) {
+        id(g_salt) = salt;
+        id(salt_sensor).publish_state(salt);
+      } else {
+        ESP_LOGW("spintouch", "Invalid Salt value: %.2f", salt);
+      }
+
+      // Offset 52: Iron (0x0B)
+      float iron = *reinterpret_cast<const float*>(&x[54]);
+      if (is_valid(iron) && iron >= 0 && iron <= 10) {
+        id(g_iron) = iron;
+        id(iron_sensor).publish_state(iron);
+      } else {
+        ESP_LOGW("spintouch", "Invalid Iron value: %.2f", iron);
+      }
+
+      // Offset 58: Phosphate (0x0D)
+      float phos = *reinterpret_cast<const float*>(&x[60]);
+      if (is_valid(phos) && phos >= 0 && phos <= 2000) {
+        id(g_phosphate) = phos;
+        id(phosphate).publish_state(phos);
+      } else {
+        ESP_LOGW("spintouch", "Invalid Phosphate value: %.2f", phos);
+      }
+
+      ESP_LOGI("spintouch", "FC:%.2f TC:%.2f pH:%.2f Alk:%.0f Ca:%.0f CYA:%.0f Salt:%.0f Fe:%.3f PO4:%.0f",
+               id(g_free_chlorine), id(g_total_chlorine), id(g_ph), id(g_alkalinity),
+               id(g_calcium), id(g_cya), id(g_salt), id(g_iron), id(g_phosphate));
+
+      // Trigger the disconnect timer script
+      id(handle_reading_received).execute();
+
+      return id(g_free_chlorine);
+
+  # ===== Primary Water Quality Sensors =====
+
   - platform: template
-    name: "Refresh Readings"
-    on_press:
-      then:
-        - script.execute: read_test_results
+    name: "Free Chlorine"
+    id: free_chlorine
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    lambda: 'return id(g_free_chlorine);'
+    update_interval: 60s
 
-# Binary sensor for connection status
+  - platform: template
+    name: "Total Chlorine"
+    id: total_chlorine
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    lambda: 'return id(g_total_chlorine);'
+    update_interval: 60s
+
+  - platform: template
+    name: "pH"
+    id: ph_sensor
+    accuracy_decimals: 2
+    icon: "mdi:ph"
+    lambda: 'return id(g_ph);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Total Alkalinity"
+    id: alkalinity
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:water"
+    lambda: 'return id(g_alkalinity);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Calcium Hardness"
+    id: calcium
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:water"
+    lambda: 'return id(g_calcium);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Cyanuric Acid"
+    id: cya_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:shield-sun"
+    lambda: 'return id(g_cya);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Salt"
+    id: salt_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 0
+    icon: "mdi:shaker"
+    lambda: 'return id(g_salt);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Iron"
+    id: iron_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 3
+    icon: "mdi:iron"
+    lambda: 'return id(g_iron);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Phosphate"
+    id: phosphate
+    unit_of_measurement: "ppb"
+    accuracy_decimals: 1
+    icon: "mdi:leaf"
+    lambda: 'return id(g_phosphate);'
+    update_interval: 60s
+
+  # ===== Calculated Sensors =====
+
+  - platform: template
+    name: "Combined Chlorine"
+    id: combined_chlorine
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask-outline"
+    lambda: |-
+      float fc = id(g_free_chlorine);
+      float tc = id(g_total_chlorine);
+      if (isnan(fc) || isnan(tc)) return NAN;
+      float cc = tc - fc;
+      return (cc >= 0) ? cc : 0;
+    update_interval: 60s
+
+  - platform: template
+    name: "FC/CYA Ratio"
+    id: fc_cya_ratio
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    icon: "mdi:percent"
+    lambda: |-
+      float fc = id(g_free_chlorine);
+      float cya = id(g_cya);
+      if (isnan(fc) || isnan(cya) || cya <= 0) return NAN;
+      return (fc / cya) * 100.0;
+    update_interval: 60s
+
+  - platform: template
+    name: "Test Age"
+    id: test_age
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    icon: "mdi:clock-alert-outline"
+    lambda: |-
+      uint32_t last = id(last_reading_timestamp);
+      if (last == 0) return NAN;
+      uint32_t now = id(ha_time).now().timestamp;
+      if (now < last) return NAN;
+      return (now - last) / 60.0;
+    update_interval: 60s
+
+  # ===== Diagnostic Sensors =====
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+
+# ===== Binary Sensors - Connection Status & Range Indicators =====
 binary_sensor:
   - platform: template
     name: "SpinTouch Connected"
-    lambda: |-
-      return id(spintouch_client).connected();
+    id: spintouch_connected
+    lambda: return id(spintouch).connected();
     device_class: connectivity
+
+  - platform: template
+    name: "Connection Enabled"
+    lambda: return id(spintouch).enabled;
+    entity_category: diagnostic
+    icon: "mdi:bluetooth-settings"
+
+  # Range indicators
+  - platform: template
+    name: "Free Chlorine In Range"
+    id: fc_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_free_chlorine);
+      if (isnan(v)) return false;
+      return v >= ${fc_min} && v <= ${fc_max};
+
+  - platform: template
+    name: "pH In Range"
+    id: ph_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_ph);
+      if (isnan(v)) return false;
+      return v >= ${ph_min} && v <= ${ph_max};
+
+  - platform: template
+    name: "Alkalinity In Range"
+    id: alk_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_alkalinity);
+      if (isnan(v)) return false;
+      return v >= ${alk_min} && v <= ${alk_max};
+
+  - platform: template
+    name: "Calcium In Range"
+    id: ca_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_calcium);
+      if (isnan(v)) return false;
+      return v >= ${ca_min} && v <= ${ca_max};
+
+  - platform: template
+    name: "Cyanuric Acid In Range"
+    id: cya_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_cya);
+      if (isnan(v)) return false;
+      return v >= ${cya_min} && v <= ${cya_max};
+
+  - platform: template
+    name: "Salt In Range"
+    id: salt_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_salt);
+      if (isnan(v)) return false;
+      // If salt_min is 0, treat as non-saltwater pool (always in range if 0)
+      if (${salt_min} == 0 && v == 0) return true;
+      return v >= ${salt_min} && v <= ${salt_max};
+
+  - platform: template
+    name: "Iron In Range"
+    id: iron_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_iron);
+      if (isnan(v)) return false;
+      return v <= ${iron_max};
+
+  - platform: template
+    name: "Phosphate In Range"
+    id: phosphate_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_phosphate);
+      if (isnan(v)) return false;
+      return v <= ${phosphate_max};
+
+  - platform: template
+    name: "All Parameters In Range"
+    id: all_in_range
+    icon: "mdi:check-decagram"
+    device_class: problem
+    lambda: |-
+      // Returns true if ANY parameter is out of range (problem detected)
+      bool fc_ok = id(fc_in_range).state;
+      bool ph_ok = id(ph_in_range).state;
+      bool alk_ok = id(alk_in_range).state;
+      bool ca_ok = id(ca_in_range).state;
+      bool cya_ok = id(cya_in_range).state;
+      bool iron_ok = id(iron_in_range).state;
+      bool phos_ok = id(phosphate_in_range).state;
+      // Return true if there's a problem (inverted for device_class: problem)
+      return !(fc_ok && ph_ok && alk_ok && ca_ok && cya_ok && iron_ok && phos_ok);
+
+# ===== Buttons =====
+button:
+  - platform: restart
+    name: "Restart"
+    entity_category: config
+
+  - platform: template
+    name: "Force Reconnect"
+    icon: "mdi:bluetooth-connect"
+    entity_category: config
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            format: "Force reconnect requested..."
+        - lambda: |-
+            id(reading_received) = false;
+            id(spintouch).set_enabled(true);
+

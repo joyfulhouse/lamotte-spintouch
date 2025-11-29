@@ -2,54 +2,23 @@
   "config": {
     "step": {
       "user": {
-        "title": "SpinTouch Device",
-        "description": "Enter the Bluetooth MAC address of your SpinTouch device (e.g., {example}). You can find this using the nRF Connect app on your phone.",
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Select a discovered SpinTouch device or enter the Bluetooth address manually.",
         "data": {
-          "address": "MAC Address"
+          "address": "Bluetooth Address"
         }
       },
       "bluetooth_confirm": {
-        "title": "Confirm SpinTouch Device",
-        "description": "Do you want to set up {name}?"
+        "title": "Confirm SpinTouch",
+        "description": "Do you want to set up {name} ({address})?"
       }
     },
     "abort": {
       "already_configured": "Device is already configured",
-      "no_devices_found": "No SpinTouch devices found. Make sure your device is powered on and within Bluetooth range."
-    }
-  },
-  "entity": {
-    "sensor": {
-      "free_chlorine": {
-        "name": "Free Chlorine"
-      },
-      "total_chlorine": {
-        "name": "Total Chlorine"
-      },
-      "ph": {
-        "name": "pH"
-      },
-      "alkalinity": {
-        "name": "Total Alkalinity"
-      },
-      "calcium_hardness": {
-        "name": "Calcium Hardness"
-      },
-      "cyanuric_acid": {
-        "name": "Cyanuric Acid"
-      },
-      "salt": {
-        "name": "Salt"
-      },
-      "iron": {
-        "name": "Iron"
-      },
-      "phosphate": {
-        "name": "Phosphate"
-      },
-      "last_test_time": {
-        "name": "Last Test Time"
-      }
+      "no_device": "No device found"
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to device"
     }
   }
 }

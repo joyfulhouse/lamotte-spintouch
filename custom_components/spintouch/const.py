@@ -1,63 +1,161 @@
-"""Constants for the SpinTouch integration."""
+"""Constants for the LaMotte SpinTouch integration."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import IntEnum
+
 DOMAIN = "spintouch"
-MANUFACTURER = "LaMotte"
-MODEL = "WaterLink Spin Touch"
 
-# BLE Service and Characteristic UUIDs
-# Discovered via nRF Connect on 2025-11-28
-SPINTOUCH_SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"
-CHAR_TEST_RESULTS_UUID = "00000000-0000-1000-8000-bbbd00000010"
-CHAR_STATUS_UUID = "00000000-0000-1000-8000-bbbd00000011"
-CHAR_DEVICE_INFO_UUID = "00000000-0000-1000-8000-bbbd00000031"
+# BLE UUIDs
+SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"
+DATA_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000010"
+STATUS_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000011"
 
-# Device name prefix for discovery
-DEVICE_NAME_PREFIX = "SpinTouch"
+# Connection settings
+DISCONNECT_DELAY = 10  # seconds after reading before disconnect
+RECONNECT_DELAY = 300  # seconds to wait before reconnecting (5 min)
 
-# Data format constants
-DATA_HEADER_SIZE = 4
-DATA_ENTRY_SIZE = 6  # [param_id, flags, float32_le]
-TIMESTAMP_OFFSET = 74
-TIMESTAMP_SIZE = 6
+# Data parsing - offsets into the BLE data packet
+# Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
 
-# Parameter IDs and their offsets in the data
-# Format: param_id -> (offset, name, unit, icon, decimals)
-PARAMETERS = {
-    0x01: (4, "free_chlorine", "Free Chlorine", "ppm", "mdi:flask", 2),
-    0x02: (10, "total_chlorine", "Total Chlorine", "ppm", "mdi:flask", 2),
-    0x06: (22, "ph", "pH", None, "mdi:ph", 2),
-    0x07: (28, "alkalinity", "Total Alkalinity", "ppm", "mdi:water", 1),
-    0x0F: (34, "calcium_hardness", "Calcium Hardness", "ppm", "mdi:water", 1),
-    0x0A: (40, "cyanuric_acid", "Cyanuric Acid", "ppm", "mdi:shield-sun", 1),
-    0x0C: (46, "salt", "Salt", "ppm", "mdi:shaker", 2),
-    0x0B: (52, "iron", "Iron", "ppm", "mdi:iron", 3),
-    0x0D: (58, "phosphate", "Phosphate", "ppb", "mdi:leaf", 1),
-}
 
-# All parameter keys for iteration
-PARAMETER_KEYS = [
-    "free_chlorine",
-    "total_chlorine",
-    "ph",
-    "alkalinity",
-    "calcium_hardness",
-    "cyanuric_acid",
-    "salt",
-    "iron",
-    "phosphate",
+class ParamId(IntEnum):
+    """Parameter IDs in the SpinTouch BLE data."""
+
+    FREE_CHLORINE = 0x01
+    TOTAL_CHLORINE = 0x02
+    PH = 0x06
+    ALKALINITY = 0x07
+    CYANURIC_ACID = 0x0A
+    IRON = 0x0B
+    SALT = 0x0C
+    PHOSPHATE = 0x0D
+    CALCIUM_HARDNESS = 0x0F
+
+
+@dataclass
+class SensorDefinition:
+    """Definition for a SpinTouch sensor."""
+
+    key: str
+    name: str
+    unit: str | None
+    icon: str
+    decimals: int
+    offset: int  # Byte offset in BLE data where float value starts
+    min_valid: float
+    max_valid: float
+
+
+# Sensor definitions with byte offsets for parsing
+SENSORS: list[SensorDefinition] = [
+    SensorDefinition(
+        key="free_chlorine",
+        name="Free Chlorine",
+        unit="ppm",
+        icon="mdi:flask",
+        decimals=2,
+        offset=6,
+        min_valid=0,
+        max_valid=20,
+    ),
+    SensorDefinition(
+        key="total_chlorine",
+        name="Total Chlorine",
+        unit="ppm",
+        icon="mdi:flask",
+        decimals=2,
+        offset=12,
+        min_valid=0,
+        max_valid=20,
+    ),
+    SensorDefinition(
+        key="ph",
+        name="pH",
+        unit=None,
+        icon="mdi:ph",
+        decimals=2,
+        offset=24,
+        min_valid=0,
+        max_valid=14,
+    ),
+    SensorDefinition(
+        key="alkalinity",
+        name="Total Alkalinity",
+        unit="ppm",
+        icon="mdi:water",
+        decimals=1,
+        offset=30,
+        min_valid=0,
+        max_valid=500,
+    ),
+    SensorDefinition(
+        key="calcium",
+        name="Calcium Hardness",
+        unit="ppm",
+        icon="mdi:water",
+        decimals=1,
+        offset=36,
+        min_valid=0,
+        max_valid=1000,
+    ),
+    SensorDefinition(
+        key="cyanuric_acid",
+        name="Cyanuric Acid",
+        unit="ppm",
+        icon="mdi:shield-sun",
+        decimals=1,
+        offset=42,
+        min_valid=0,
+        max_valid=300,
+    ),
+    SensorDefinition(
+        key="salt",
+        name="Salt",
+        unit="ppm",
+        icon="mdi:shaker",
+        decimals=0,
+        offset=48,
+        min_valid=0,
+        max_valid=10000,
+    ),
+    SensorDefinition(
+        key="iron",
+        name="Iron",
+        unit="ppm",
+        icon="mdi:iron",
+        decimals=3,
+        offset=54,
+        min_valid=0,
+        max_valid=10,
+    ),
+    SensorDefinition(
+        key="phosphate",
+        name="Phosphate",
+        unit="ppb",
+        icon="mdi:leaf",
+        decimals=1,
+        offset=60,
+        min_valid=0,
+        max_valid=2000,
+    ),
 ]
 
-# Status codes from notifications
-STATUS_CODES = {
-    0x01: "Initializing",
-    0x02: "Ready",
-    0x03: "Testing",
-    0x04: "Complete",
-    0x05: "Error",
-    0x06: "Idle",
-}
-
-# Update interval for polling (seconds)
-DEFAULT_UPDATE_INTERVAL = 60
+# Calculated sensors (derived from primary sensors)
+CALCULATED_SENSORS = [
+    {
+        "key": "combined_chlorine",
+        "name": "Combined Chlorine",
+        "unit": "ppm",
+        "icon": "mdi:flask-outline",
+        "decimals": 2,
+    },
+    {
+        "key": "fc_cya_ratio",
+        "name": "FC/CYA Ratio",
+        "unit": "%",
+        "icon": "mdi:percent",
+        "decimals": 1,
+    },
+]

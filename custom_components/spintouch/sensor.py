@@ -1,9 +1,7 @@
-"""Sensor platform for LaMotte WaterLink Spin Touch."""
+"""Sensor platform for SpinTouch integration."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -14,112 +12,14 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONCENTRATION_PARTS_PER_BILLION, CONCENTRATION_PARTS_PER_MILLION
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, MODEL
+from .const import CALCULATED_SENSORS, DOMAIN, SENSORS
 from .coordinator import SpinTouchCoordinator, SpinTouchData
-
-
-@dataclass(frozen=True, kw_only=True)
-class SpinTouchSensorEntityDescription(SensorEntityDescription):
-    """Describes a SpinTouch sensor entity."""
-
-    value_fn: Callable[[SpinTouchData], float | datetime | None]
-
-
-SENSOR_DESCRIPTIONS: tuple[SpinTouchSensorEntityDescription, ...] = (
-    SpinTouchSensorEntityDescription(
-        key="free_chlorine",
-        translation_key="free_chlorine",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:flask",
-        suggested_display_precision=2,
-        value_fn=lambda data: data.free_chlorine,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="total_chlorine",
-        translation_key="total_chlorine",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:flask",
-        suggested_display_precision=2,
-        value_fn=lambda data: data.total_chlorine,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="ph",
-        translation_key="ph",
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:ph",
-        suggested_display_precision=2,
-        value_fn=lambda data: data.ph,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="alkalinity",
-        translation_key="alkalinity",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:water",
-        suggested_display_precision=1,
-        value_fn=lambda data: data.alkalinity,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="calcium_hardness",
-        translation_key="calcium_hardness",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:water",
-        suggested_display_precision=1,
-        value_fn=lambda data: data.calcium_hardness,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="cyanuric_acid",
-        translation_key="cyanuric_acid",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:shield-sun",
-        suggested_display_precision=1,
-        value_fn=lambda data: data.cyanuric_acid,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="salt",
-        translation_key="salt",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:shaker",
-        suggested_display_precision=0,
-        value_fn=lambda data: data.salt,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="iron",
-        translation_key="iron",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:iron",
-        suggested_display_precision=3,
-        value_fn=lambda data: data.iron,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="phosphate",
-        translation_key="phosphate",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_BILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:leaf",
-        suggested_display_precision=1,
-        value_fn=lambda data: data.phosphate,
-    ),
-    SpinTouchSensorEntityDescription(
-        key="last_test_time",
-        translation_key="last_test_time",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        icon="mdi:clock-outline",
-        value_fn=lambda data: data.last_test_time,
-    ),
-)
 
 
 async def async_setup_entry(
@@ -130,38 +30,126 @@ async def async_setup_entry(
     """Set up SpinTouch sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities(
-        SpinTouchSensor(coordinator, description, entry)
-        for description in SENSOR_DESCRIPTIONS
+    entities: list[SensorEntity] = []
+
+    # Primary sensors from BLE data
+    for sensor_def in SENSORS:
+        entities.append(
+            SpinTouchSensor(
+                coordinator=coordinator,
+                entry=entry,
+                key=sensor_def.key,
+                name=sensor_def.name,
+                unit=sensor_def.unit,
+                icon=sensor_def.icon,
+                decimals=sensor_def.decimals,
+            )
+        )
+
+    # Calculated sensors
+    for calc_sensor in CALCULATED_SENSORS:
+        entities.append(
+            SpinTouchSensor(
+                coordinator=coordinator,
+                entry=entry,
+                key=calc_sensor["key"],
+                name=calc_sensor["name"],
+                unit=calc_sensor["unit"],
+                icon=calc_sensor["icon"],
+                decimals=calc_sensor["decimals"],
+            )
+        )
+
+    # Diagnostic sensors
+    entities.append(
+        SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry)
     )
+
+    async_add_entities(entities)
 
 
 class SpinTouchSensor(CoordinatorEntity[SpinTouchCoordinator], SensorEntity):
-    """Representation of a SpinTouch sensor."""
+    """Sensor for SpinTouch water quality parameters."""
 
-    entity_description: SpinTouchSensorEntityDescription
     _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        description: SpinTouchSensorEntityDescription,
+        entry: ConfigEntry,
+        key: str,
+        name: str,
+        unit: str | None,
+        icon: str,
+        decimals: int,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._key = key
+        self._decimals = decimals
+
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit
+        self._attr_icon = icon
+        self._attr_suggested_display_precision = decimals
+
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.address)},
+            name=coordinator.device_name,
+            manufacturer="LaMotte",
+            model="WaterLink Spin Touch",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the sensor value."""
+        if self.coordinator.data:
+            return self.coordinator.data.values.get(self._key)
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and self._key in self.coordinator.data.values
+        )
+
+
+class SpinTouchLastReadingSensor(
+    CoordinatorEntity[SpinTouchCoordinator], SensorEntity
+):
+    """Sensor showing the last reading timestamp."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clock-outline"
+
+    def __init__(
+        self,
+        coordinator: SpinTouchCoordinator,
         entry: ConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self.entity_description = description
-        self._attr_unique_id = f"{entry.unique_id}_{description.key}"
+
+        self._attr_unique_id = f"{entry.entry_id}_last_reading"
+        self._attr_name = "Last Reading"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.unique_id)},
-            name=entry.title,
-            manufacturer=MANUFACTURER,
-            model=MODEL,
+            identifiers={(DOMAIN, coordinator.address)},
+            name=coordinator.device_name,
+            manufacturer="LaMotte",
+            model="WaterLink Spin Touch",
         )
 
     @property
-    def native_value(self) -> float | datetime | None:
-        """Return the sensor value."""
-        if self.coordinator.data is None:
-            return None
-        return self.entity_description.value_fn(self.coordinator.data)
+    def native_value(self) -> datetime | None:
+        """Return the last reading timestamp."""
+        if self.coordinator.data:
+            return self.coordinator.data.last_reading_time
+        return None

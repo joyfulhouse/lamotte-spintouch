@@ -1,0 +1,60 @@
+# Langelier Saturation Index (LSI) Template Sensor
+# Add this to your Home Assistant configuration.yaml or templates.yaml
+#
+# LSI indicates water balance:
+#   -0.3 to +0.3 = Balanced (ideal)
+#   < -0.3 = Corrosive (add calcium or raise pH)
+#   > +0.3 = Scale-forming (lower pH or calcium)
+#
+# Required sensors:
+#   - sensor.spintouch_reader_ph
+#   - sensor.spintouch_reader_calcium_hardness
+#   - sensor.spintouch_reader_total_alkalinity
+#   - sensor.pool_temperature (your pool temp sensor - adjust entity_id as needed)
+
+template:
+  - sensor:
+      - name: "Pool LSI"
+        unique_id: pool_lsi
+        icon: mdi:scale-balance
+        state: >
+          {% set ph = states('sensor.spintouch_reader_ph') | float(none) %}
+          {% set ca = states('sensor.spintouch_reader_calcium_hardness') | float(none) %}
+          {% set alk = states('sensor.spintouch_reader_total_alkalinity') | float(none) %}
+          {% set temp_f = states('sensor.pool_temperature') | float(none) %}
+          {% if ph and ca and alk and temp_f and ca > 0 and alk > 0 %}
+            {% set temp_c = (temp_f - 32) * 5 / 9 %}
+            {# Temperature factor lookup table #}
+            {% if temp_c <= 0 %}{% set tf = 0.0 %}
+            {% elif temp_c <= 4 %}{% set tf = 0.1 %}
+            {% elif temp_c <= 8 %}{% set tf = 0.2 %}
+            {% elif temp_c <= 12 %}{% set tf = 0.3 %}
+            {% elif temp_c <= 16 %}{% set tf = 0.4 %}
+            {% elif temp_c <= 19 %}{% set tf = 0.5 %}
+            {% elif temp_c <= 24 %}{% set tf = 0.6 %}
+            {% elif temp_c <= 29 %}{% set tf = 0.7 %}
+            {% elif temp_c <= 34 %}{% set tf = 0.8 %}
+            {% else %}{% set tf = 0.9 %}
+            {% endif %}
+            {% set cf = (ca | log) %}
+            {% set af = (alk | log) %}
+            {{ (ph + tf + cf + af - 12.1) | round(2) }}
+          {% else %}
+            unknown
+          {% endif %}
+        attributes:
+          status: >
+            {% set lsi = states('sensor.pool_lsi') | float(none) %}
+            {% if lsi is none %}unknown
+            {% elif lsi < -0.3 %}corrosive
+            {% elif lsi > 0.3 %}scale_forming
+            {% else %}balanced
+            {% endif %}
+
+  - binary_sensor:
+      - name: "Pool LSI In Range"
+        unique_id: pool_lsi_in_range
+        icon: mdi:check-circle
+        state: >
+          {% set lsi = states('sensor.pool_lsi') | float(none) %}
+          {{ lsi is not none and -0.3 <= lsi <= 0.3 }}

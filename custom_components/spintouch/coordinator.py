@@ -1,11 +1,11 @@
-"""Data coordinator for LaMotte WaterLink Spin Touch."""
+"""DataUpdateCoordinator for SpinTouch BLE device."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import struct
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from bleak import BleakClient
@@ -13,249 +13,270 @@ from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import (
-    BluetoothCallbackMatcher,
-    BluetoothChange,
-    BluetoothServiceInfoBleak,
-)
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    CHAR_STATUS_UUID,
-    CHAR_TEST_RESULTS_UUID,
-    DEVICE_NAME_PREFIX,
+    DATA_CHARACTERISTIC_UUID,
+    DISCONNECT_DELAY,
     DOMAIN,
-    PARAMETERS,
-    SPINTOUCH_SERVICE_UUID,
-    TIMESTAMP_OFFSET,
+    SENSORS,
+    SERVICE_UUID,
+    STATUS_CHARACTERISTIC_UUID,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+# Minimum data size for valid reading
+MIN_DATA_SIZE = 70
+
 
 class SpinTouchData:
-    """Parsed data from SpinTouch device."""
+    """Container for SpinTouch sensor data."""
 
     def __init__(self) -> None:
-        """Initialize the data container."""
-        self.free_chlorine: float | None = None
-        self.total_chlorine: float | None = None
-        self.ph: float | None = None
-        self.alkalinity: float | None = None
-        self.calcium_hardness: float | None = None
-        self.cyanuric_acid: float | None = None
-        self.salt: float | None = None
-        self.iron: float | None = None
-        self.phosphate: float | None = None
-        self.last_test_time: datetime | None = None
-        self.device_id: int | None = None
-        self.firmware_version: str | None = None
+        """Initialize data container."""
+        self.values: dict[str, float | None] = {}
+        self.last_reading_time: datetime | None = None
         self.connected: bool = False
+
+    def update_from_bytes(self, data: bytes) -> bool:
+        """Parse BLE data and update values.
+
+        Returns True if data was valid and parsed successfully.
+        """
+        if len(data) < MIN_DATA_SIZE:
+            _LOGGER.warning("Data too short: %d bytes", len(data))
+            return False
+
+        _LOGGER.debug("Parsing %d bytes of SpinTouch data", len(data))
+
+        for sensor in SENSORS:
+            try:
+                # Extract float32 little-endian from offset
+                value = struct.unpack_from("<f", data, sensor.offset)[0]
+
+                # Validate the value
+                if (
+                    value is not None
+                    and not (value != value)  # NaN check
+                    and sensor.min_valid <= value <= sensor.max_valid
+                ):
+                    self.values[sensor.key] = round(value, sensor.decimals)
+                    _LOGGER.debug(
+                        "%s: %.2f %s",
+                        sensor.name,
+                        value,
+                        sensor.unit or "",
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Invalid %s value: %s (valid range: %s-%s)",
+                        sensor.name,
+                        value,
+                        sensor.min_valid,
+                        sensor.max_valid,
+                    )
+            except struct.error as err:
+                _LOGGER.error("Failed to parse %s: %s", sensor.name, err)
+
+        # Calculate derived values
+        fc = self.values.get("free_chlorine")
+        tc = self.values.get("total_chlorine")
+        cya = self.values.get("cyanuric_acid")
+
+        if fc is not None and tc is not None:
+            cc = tc - fc
+            self.values["combined_chlorine"] = round(max(0, cc), 2)
+
+        if fc is not None and cya is not None and cya > 0:
+            self.values["fc_cya_ratio"] = round((fc / cya) * 100, 1)
+
+        self.last_reading_time = datetime.now()
+        return True
 
 
 class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):
-    """Coordinator that listens for SpinTouch and receives data when device connects."""
+    """Coordinator for SpinTouch BLE device."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         address: str,
-        entry: ConfigEntry,
+        service_info: BluetoothServiceInfoBleak | None = None,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=None,  # No polling - we wait for device to appear
+            # Don't poll - we use push notifications from the device
+            update_interval=None,
         )
-        self._address = address.upper()
-        self.entry = entry
-        self._cancel_bluetooth_callback: callable | None = None
-        self._connecting = False
-        self._last_data = SpinTouchData()
+        self.address = address
+        self._service_info = service_info
+        self._client: BleakClient | None = None
+        self._data = SpinTouchData()
+        self._disconnect_timer: asyncio.TimerHandle | None = None
+        self._expected_disconnect = False
+        self._connect_lock = asyncio.Lock()
+
+    @property
+    def device_name(self) -> str:
+        """Return the device name."""
+        if self._service_info and self._service_info.name:
+            return self._service_info.name
+        return f"SpinTouch {self.address[-8:].replace(':', '')}"
 
     async def _async_update_data(self) -> SpinTouchData:
-        """Return the last received data."""
-        return self._last_data
+        """Fetch data - called by coordinator on demand."""
+        return self._data
 
-    async def async_config_entry_first_refresh(self) -> None:
-        """Start listening for the device."""
-        await super().async_config_entry_first_refresh()
-
-        # Register callback for when SpinTouch is discovered via Bluetooth
-        self._cancel_bluetooth_callback = bluetooth.async_register_callback(
-            self.hass,
-            self._on_bluetooth_event,
-            BluetoothCallbackMatcher(
-                connectable=True,
-                service_uuids=[SPINTOUCH_SERVICE_UUID],
-            ),
-            bluetooth.BluetoothScanningMode.ACTIVE,
-        )
-
-        _LOGGER.info(
-            "SpinTouch listener started for %s - waiting for device to advertise",
-            self._address,
-        )
-
-    @callback
-    def _on_bluetooth_event(
-        self,
-        service_info: BluetoothServiceInfoBleak,
-        change: BluetoothChange,
-    ) -> None:
-        """Handle Bluetooth advertisement from SpinTouch."""
-        # Check if this is our device (by name or address)
-        if not service_info.name or not service_info.name.startswith(DEVICE_NAME_PREFIX):
-            # Also check by MAC address
-            if self._address not in service_info.address.upper():
-                return
-
-        _LOGGER.info(
-            "SpinTouch detected: %s (%s) RSSI: %s",
-            service_info.name,
-            service_info.address,
-            service_info.rssi,
-        )
-
-        # Don't reconnect if already connecting
-        if self._connecting:
-            return
-
-        # Schedule connection (can't await in callback)
-        self.hass.async_create_task(
-            self._connect_and_receive(service_info),
-            name=f"spintouch_connect_{service_info.address}",
-        )
-
-    async def _connect_and_receive(
-        self, service_info: BluetoothServiceInfoBleak
-    ) -> None:
-        """Connect to SpinTouch and receive data."""
-        if self._connecting:
-            return
-
-        self._connecting = True
-        _LOGGER.info("Connecting to SpinTouch %s...", service_info.name)
-
-        try:
-            ble_device = bluetooth.async_ble_device_from_address(
-                self.hass, service_info.address, connectable=True
-            )
-
-            if not ble_device:
-                _LOGGER.warning("Could not get BLE device for %s", service_info.address)
-                return
-
-            client = await establish_connection(
-                BleakClient,
-                ble_device,
-                service_info.address,
-                max_attempts=3,
-            )
+    async def async_connect(self) -> bool:
+        """Connect to the SpinTouch device."""
+        async with self._connect_lock:
+            if self._client and self._client.is_connected:
+                _LOGGER.debug("Already connected to %s", self.address)
+                return True
 
             try:
-                _LOGGER.info("Connected to SpinTouch!")
-                self._last_data.connected = True
+                _LOGGER.info("Connecting to SpinTouch at %s", self.address)
+
+                device = bluetooth.async_ble_device_from_address(
+                    self.hass, self.address, connectable=True
+                )
+                if not device:
+                    _LOGGER.warning("Device %s not found", self.address)
+                    return False
+
+                self._expected_disconnect = False
+                self._client = await establish_connection(
+                    BleakClient,
+                    device,
+                    self.address,
+                    disconnected_callback=self._on_disconnect,
+                )
 
                 # Subscribe to status notifications
-                try:
-                    await client.start_notify(
-                        CHAR_STATUS_UUID,
-                        self._on_status_notification,
-                    )
-                except BleakError:
-                    _LOGGER.debug("Could not subscribe to status notifications")
+                await self._client.start_notify(
+                    STATUS_CHARACTERISTIC_UUID,
+                    self._on_status_notification,
+                )
 
-                # Read test results
-                await self._read_test_results(client)
+                self._data.connected = True
+                _LOGGER.info("Connected to SpinTouch at %s", self.address)
+                self.async_update_listeners()
+                return True
 
-                # Keep connection briefly for any additional data
-                await asyncio.sleep(3)
-
-            finally:
-                await client.disconnect()
-
-        except BleakError as err:
-            _LOGGER.warning("BLE error connecting to SpinTouch: %s", err)
-        except Exception as err:
-            _LOGGER.error("Error connecting to SpinTouch: %s", err)
-        finally:
-            self._connecting = False
-            self._last_data.connected = False
-
-    def _on_status_notification(self, sender, data: bytearray) -> None:
-        """Handle status notifications from SpinTouch."""
-        if data:
-            status = data[0]
-            status_names = {
-                0x01: "Initializing",
-                0x02: "Ready",
-                0x03: "Testing",
-                0x04: "Complete",
-                0x05: "Error",
-                0x06: "Idle",
-            }
-            _LOGGER.debug(
-                "SpinTouch status: %s", status_names.get(status, f"0x{status:02X}")
-            )
-
-    async def _read_test_results(self, client: BleakClient) -> None:
-        """Read and parse test results from the device."""
-        try:
-            raw_data = await client.read_gatt_char(CHAR_TEST_RESULTS_UUID)
-            _LOGGER.debug("Received %d bytes of test data", len(raw_data))
-            self._parse_test_results(raw_data)
-            # Notify HA that we have new data
-            self.async_set_updated_data(self._last_data)
-        except BleakError as err:
-            _LOGGER.warning("Failed to read test results: %s", err)
-
-    def _parse_test_results(self, raw_data: bytes) -> None:
-        """Parse the test results from raw BLE data."""
-        if len(raw_data) < 70:
-            _LOGGER.warning("Test results data too short: %d bytes", len(raw_data))
-            return
-
-        _LOGGER.debug("Parsing %d bytes of test results", len(raw_data))
-
-        # Parse each parameter (6 bytes each: param_id, flags, float32_le)
-        for param_id, (offset, key, name, unit, icon, decimals) in PARAMETERS.items():
-            if offset + 6 <= len(raw_data):
-                try:
-                    value = struct.unpack("<f", raw_data[offset + 2 : offset + 6])[0]
-                    # Validate value is reasonable
-                    if -1000 < value < 100000:
-                        setattr(self._last_data, key, round(value, decimals))
-                        _LOGGER.info("%s: %.2f %s", name, value, unit or "")
-                except struct.error as err:
-                    _LOGGER.debug("Error parsing %s: %s", name, err)
-
-        # Parse timestamp (BCD format: YY-MM-DD-HH-MM-SS)
-        if len(raw_data) >= TIMESTAMP_OFFSET + 6:
-            try:
-                year = 2000 + raw_data[TIMESTAMP_OFFSET]
-                month = raw_data[TIMESTAMP_OFFSET + 1]
-                day = raw_data[TIMESTAMP_OFFSET + 2]
-                hour = raw_data[TIMESTAMP_OFFSET + 3]
-                minute = raw_data[TIMESTAMP_OFFSET + 4]
-                second = raw_data[TIMESTAMP_OFFSET + 5]
-
-                if 1 <= month <= 12 and 1 <= day <= 31:
-                    self._last_data.last_test_time = datetime(
-                        year, month, day, hour, minute, second
-                    )
-                    _LOGGER.info("Test time: %s", self._last_data.last_test_time)
-            except (ValueError, IndexError) as err:
-                _LOGGER.debug("Error parsing timestamp: %s", err)
+            except BleakError as err:
+                _LOGGER.error("Failed to connect to %s: %s", self.address, err)
+                self._data.connected = False
+                return False
+            except Exception as err:
+                _LOGGER.exception("Unexpected error connecting to %s: %s", self.address, err)
+                self._data.connected = False
+                return False
 
     async def async_disconnect(self) -> None:
-        """Stop listening and clean up."""
-        if self._cancel_bluetooth_callback:
-            self._cancel_bluetooth_callback()
-            self._cancel_bluetooth_callback = None
+        """Disconnect from the SpinTouch device."""
+        self._cancel_disconnect_timer()
+        self._expected_disconnect = True
 
-        _LOGGER.info("SpinTouch coordinator stopped")
+        if self._client and self._client.is_connected:
+            try:
+                _LOGGER.info("Disconnecting from SpinTouch at %s", self.address)
+                await self._client.disconnect()
+            except BleakError as err:
+                _LOGGER.warning("Error disconnecting: %s", err)
+
+        self._client = None
+        self._data.connected = False
+        self.async_update_listeners()
+
+    @callback
+    def _on_disconnect(self, client: BleakClient) -> None:
+        """Handle disconnection."""
+        _LOGGER.info(
+            "Disconnected from SpinTouch at %s (expected: %s)",
+            self.address,
+            self._expected_disconnect,
+        )
+        self._client = None
+        self._data.connected = False
+        self.async_update_listeners()
+
+    def _on_status_notification(
+        self, sender: int, data: bytearray
+    ) -> None:
+        """Handle status notification from SpinTouch."""
+        _LOGGER.debug("Status notification received, reading data...")
+        # Schedule data read on the event loop
+        self.hass.async_create_task(self._async_read_data())
+
+    async def _async_read_data(self) -> None:
+        """Read data from the SpinTouch device."""
+        if not self._client or not self._client.is_connected:
+            _LOGGER.warning("Cannot read data - not connected")
+            return
+
+        try:
+            data = await self._client.read_gatt_char(DATA_CHARACTERISTIC_UUID)
+            _LOGGER.debug("Received %d bytes from SpinTouch", len(data))
+
+            if self._data.update_from_bytes(bytes(data)):
+                _LOGGER.info(
+                    "SpinTouch reading: FC=%.2f TC=%.2f pH=%.2f Alk=%.0f Ca=%.0f CYA=%.0f",
+                    self._data.values.get("free_chlorine", 0),
+                    self._data.values.get("total_chlorine", 0),
+                    self._data.values.get("ph", 0),
+                    self._data.values.get("alkalinity", 0),
+                    self._data.values.get("calcium", 0),
+                    self._data.values.get("cyanuric_acid", 0),
+                )
+                self.async_set_updated_data(self._data)
+                self._schedule_disconnect()
+
+        except BleakError as err:
+            _LOGGER.error("Failed to read data: %s", err)
+
+    def _schedule_disconnect(self) -> None:
+        """Schedule disconnect after delay to allow phone app access."""
+        self._cancel_disconnect_timer()
+
+        @callback
+        def _disconnect_callback() -> None:
+            _LOGGER.info(
+                "Disconnecting after %ds to allow phone app access",
+                DISCONNECT_DELAY,
+            )
+            self.hass.async_create_task(self.async_disconnect())
+
+        self._disconnect_timer = self.hass.loop.call_later(
+            DISCONNECT_DELAY, _disconnect_callback
+        )
+
+    def _cancel_disconnect_timer(self) -> None:
+        """Cancel the disconnect timer."""
+        if self._disconnect_timer:
+            self._disconnect_timer.cancel()
+            self._disconnect_timer = None
+
+    @callback
+    def async_handle_bluetooth_event(
+        self,
+        service_info: BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> None:
+        """Handle Bluetooth event - device advertisement received."""
+        _LOGGER.debug(
+            "Bluetooth event for %s: %s (RSSI: %s)",
+            self.address,
+            change,
+            service_info.rssi,
+        )
+        self._service_info = service_info
+
+        # Auto-connect when device is seen
+        if not self._data.connected and not self._connect_lock.locked():
+            self.hass.async_create_task(self.async_connect())

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import BluetoothScanningMode
+from homeassistant.components.bluetooth.match import ADDRESS, BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
@@ -13,28 +16,40 @@ from .coordinator import SpinTouchCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up LaMotte WaterLink Spin Touch from a config entry."""
-    # Get address from config data or unique_id (for backwards compatibility)
-    address: str = entry.data.get(CONF_ADDRESS) or entry.unique_id
-    if not address:
-        _LOGGER.error("No address configured for SpinTouch")
-        return False
+    """Set up SpinTouch from a config entry."""
+    address: str = entry.data[CONF_ADDRESS]
 
-    address = address.upper()
-    _LOGGER.debug("Setting up SpinTouch with address: %s", address)
+    _LOGGER.info("Setting up SpinTouch at %s", address)
 
-    coordinator = SpinTouchCoordinator(hass, address, entry)
+    # Get initial service info if device is currently visible
+    service_info = bluetooth.async_last_service_info(
+        hass, address, connectable=True
+    )
 
-    # Don't require immediate connection - device may not be advertising
-    # The coordinator will connect on-demand during updates
-    await coordinator.async_config_entry_first_refresh()
+    coordinator = SpinTouchCoordinator(hass, address, service_info)
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    # Register for Bluetooth callbacks when device is seen
+    entry.async_on_unload(
+        bluetooth.async_register_callback(
+            hass,
+            coordinator.async_handle_bluetooth_event,
+            BluetoothCallbackMatcher({ADDRESS: address}),
+            BluetoothScanningMode.ACTIVE,
+        )
+    )
 
+    # Store coordinator
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # Initial connection attempt
+    await coordinator.async_connect()
+
+    # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
@@ -42,8 +57,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.info("Unloading SpinTouch entry %s", entry.entry_id)
+
+    # Disconnect from device
+    coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_disconnect()
+
+    # Unload platforms
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        coordinator: SpinTouchCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_disconnect()
+        hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok

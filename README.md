@@ -1,102 +1,106 @@
-# LaMotte WaterLink Spin Touch
+# LaMotte WaterLink Spin Touch Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![GitHub Release](https://img.shields.io/github/v/release/joyfulhouse/lamotte-spintouch)](https://github.com/joyfulhouse/lamotte-spintouch/releases)
-[![License](https://img.shields.io/github/license/joyfulhouse/lamotte-spintouch)](LICENSE)
 
-Home Assistant integration for the **LaMotte WaterLink Spin Touch** water testing device. This integration connects directly to your SpinTouch via Bluetooth Low Energy (BLE) and exposes water quality readings as sensors.
+Home Assistant integration for the **LaMotte WaterLink Spin Touch** water testing device. The Spin Touch is a handheld photometer that reads pool and spa water quality parameters via Bluetooth LE.
 
 ## Features
 
-- Direct Bluetooth connection (no cloud dependency)
-- Real-time water quality readings
-- Works offline
-- Auto-discovery of SpinTouch devices
+- **Auto-discovery** via Bluetooth service UUID
+- **Works with ESPHome Bluetooth Proxies** - no dedicated hardware needed
+- **Push-based updates** - device notifies on new readings
+- **Auto-disconnect** - allows phone app access after reading
+- **Comprehensive sensors** - all water quality parameters plus calculated metrics
 
-## Supported Parameters
+## Sensors
 
-| Sensor | Unit | Description |
-|--------|------|-------------|
+| Parameter | Unit | Description |
+|-----------|------|-------------|
 | Free Chlorine | ppm | Active sanitizer level |
-| Total Chlorine | ppm | Combined chlorine measurement |
-| pH | - | Water acidity/alkalinity |
-| Total Alkalinity | ppm | pH buffer capacity |
-| Calcium Hardness | ppm | Calcium concentration |
-| Cyanuric Acid | ppm | UV stabilizer level |
-| Salt | ppm | Salt concentration (for SWG pools) |
-| Iron | ppm | Iron content |
-| Phosphate | ppb | Phosphate level |
-
-## Requirements
-
-- Home Assistant 2025.11.0 or newer
-- Bluetooth adapter or ESPHome Bluetooth Proxy
-- LaMotte WaterLink Spin Touch device
+| Total Chlorine | ppm | Free + Combined chlorine |
+| Combined Chlorine | ppm | Calculated (TC - FC) |
+| pH | - | Acidity/alkalinity |
+| Total Alkalinity | ppm | Buffering capacity |
+| Calcium Hardness | ppm | Water hardness |
+| Cyanuric Acid | ppm | Chlorine stabilizer |
+| Salt | ppm | For saltwater pools |
+| Iron | ppm | Metal content |
+| Phosphate | ppb | Algae nutrient |
+| FC/CYA Ratio | % | Sanitization effectiveness |
 
 ## Installation
 
 ### HACS (Recommended)
 
-1. Open HACS in Home Assistant
-2. Click the three dots menu → **Custom repositories**
-3. Add `https://github.com/joyfulhouse/lamotte-spintouch` as an **Integration**
-4. Search for "LaMotte WaterLink Spin Touch" and install
-5. Restart Home Assistant
+1. Add this repository as a custom repository in HACS
+2. Search for "LaMotte WaterLink Spin Touch"
+3. Install and restart Home Assistant
+4. Go to **Settings → Devices & Services → Add Integration**
+5. Search for "LaMotte WaterLink Spin Touch"
+6. Select your device (auto-discovered) or enter MAC address
 
 ### Manual Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/joyfulhouse/lamotte-spintouch/releases)
-2. Extract and copy `custom_components/spintouch` to your Home Assistant `config/custom_components/` directory
-3. Restart Home Assistant
+1. Copy `custom_components/spintouch/` to your Home Assistant `custom_components/` directory
+2. Restart Home Assistant
+3. Add the integration via UI
 
-## Configuration
+## Requirements
 
-1. Power on your SpinTouch device
-2. Go to **Settings** → **Devices & Services**
-3. Click **+ Add Integration**
-4. Search for "LaMotte WaterLink Spin Touch"
-5. Select your SpinTouch device from the list
+- Home Assistant 2024.1.0 or newer
+- ESPHome Bluetooth Proxy or built-in Bluetooth adapter
+- LaMotte WaterLink Spin Touch device
 
-The integration will automatically discover SpinTouch devices within Bluetooth range.
+## Alternative: ESPHome Direct
 
-## Usage
+If you prefer a dedicated ESPHome device instead of using the custom integration:
 
-After setup, sensors will appear under your SpinTouch device. Run a water test on your SpinTouch and the readings will sync automatically.
+See `esphome/spintouch.yaml` for a complete ESPHome configuration that connects directly to the Spin Touch.
 
-### ESPHome Bluetooth Proxy
+**Use ESPHome Direct when:**
+- No existing Bluetooth proxies available
+- Want local processing without Home Assistant
+- Need standalone operation
 
-For extended range, use an [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy.html). This allows the SpinTouch to be located further from your Home Assistant server.
+## How It Works
 
-Example ESPHome configuration is available in the `esphome/` directory of this repository.
+```
+Spin Touch ──BLE──> Bluetooth Proxy ──ESPHome API──> Home Assistant
+                    (existing)                        └── Custom Integration
+                                                          └── Parses BLE data
+                                                          └── Creates sensors
+```
 
-## Troubleshooting
+1. Spin Touch broadcasts BLE advertisements
+2. Nearby Bluetooth proxy detects it by service UUID
+3. Integration connects through proxy when device is seen
+4. Subscribes to status notifications
+5. Reads water quality data when test completes
+6. Parses binary data and updates sensors
+7. Disconnects after 10 seconds to allow phone app access
 
-### Device not found
-- Ensure the SpinTouch is powered on and in range
-- Check that Bluetooth is enabled on your Home Assistant host
-- If using ESPHome proxy, verify the proxy is connected
+## BLE Protocol
 
-### No readings appear
-- Run a water test on the SpinTouch
-- Wait for the test to complete (30-60 seconds)
-- Check the Home Assistant logs for connection errors
-
-## Technical Details
-
-This integration communicates with the SpinTouch using its BLE GATT profile:
+The Spin Touch uses a custom GATT profile:
 
 - **Service UUID**: `00000000-0000-1000-8000-bbbd00000000`
-- **Test Results**: `00000000-0000-1000-8000-bbbd00000010`
+- **Data Characteristic**: `00000000-0000-1000-8000-bbbd00000010`
 - **Status Notifications**: `00000000-0000-1000-8000-bbbd00000011`
+
+Data format: 4-byte header + 6-byte entries [param_id, flags, float32_le]
+
+## LSI Calculation
+
+For Langelier Saturation Index calculation with your pool temperature sensor, see `homeassistant/lsi_template.yaml`.
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request on [GitHub](https://github.com/joyfulhouse/lamotte-spintouch).
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Contributions are welcome! This integration was developed through reverse engineering of the BLE protocol.
 
 ## Disclaimer
 
-This integration is not affiliated with or endorsed by LaMotte Company. Use at your own risk.
+This is an unofficial integration. LaMotte and WaterLink are trademarks of LaMotte Company. This project is not affiliated with or endorsed by LaMotte.
+
+## License
+
+MIT License

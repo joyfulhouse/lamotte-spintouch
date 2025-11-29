@@ -7,14 +7,12 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.bluetooth import (
-    BluetoothServiceInfoBleak,
-    async_discovered_service_info,
-)
+from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 
-from .const import DEVICE_NAME_PREFIX, DOMAIN
+from .const import DOMAIN, SERVICE_UUID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,10 +31,17 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
         """Handle the Bluetooth discovery step."""
+        _LOGGER.debug("Bluetooth discovery: %s", discovery_info.address)
+
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
 
         self._discovery_info = discovery_info
+
+        # Use device name if available, otherwise generate one
+        name = discovery_info.name or f"SpinTouch {discovery_info.address[-8:].replace(':', '')}"
+
+        self.context["title_placeholders"] = {"name": name}
 
         return await self.async_step_bluetooth_confirm()
 
@@ -44,80 +49,84 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm discovery."""
-        assert self._discovery_info is not None
+        if self._discovery_info is None:
+            return self.async_abort(reason="no_device")
 
         if user_input is not None:
             return self.async_create_entry(
-                title=self._discovery_info.name,
-                data={},
+                title=self._discovery_info.name
+                or f"SpinTouch {self._discovery_info.address[-8:].replace(':', '')}",
+                data={CONF_ADDRESS: self._discovery_info.address},
             )
 
         self._set_confirm_only()
-        placeholders = {"name": self._discovery_info.name}
-        self.context["title_placeholders"] = placeholders
-
         return self.async_show_form(
             step_id="bluetooth_confirm",
-            description_placeholders=placeholders,
+            description_placeholders={
+                "name": self._discovery_info.name or "SpinTouch",
+                "address": self._discovery_info.address,
+            },
         )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the user step to pick a device."""
+        """Handle the user step - manual setup or pick from discovered devices."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
-            await self.async_set_unique_id(address.upper(), raise_on_progress=False)
+
+            await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
 
-            # Check if it's a discovered device or manual entry
+            # Check if device is reachable
             if address in self._discovered_devices:
-                title = self._discovered_devices[address].name
+                return self.async_create_entry(
+                    title=self._discovered_devices[address].name
+                    or f"SpinTouch {address[-8:].replace(':', '')}",
+                    data={CONF_ADDRESS: address},
+                )
             else:
-                title = f"SpinTouch ({address.upper()})"
+                # Manual entry - create anyway
+                return self.async_create_entry(
+                    title=f"SpinTouch {address[-8:].replace(':', '')}",
+                    data={CONF_ADDRESS: address},
+                )
 
-            return self.async_create_entry(
-                title=title,
-                data={CONF_ADDRESS: address.upper()},
-            )
+        # Scan for SpinTouch devices
+        self._discovered_devices = {}
+        for service_info in bluetooth.async_discovered_service_info(
+            self.hass, connectable=True
+        ):
+            # Check for SpinTouch service UUID
+            if SERVICE_UUID.lower() in [
+                uuid.lower() for uuid in service_info.service_uuids
+            ]:
+                self._discovered_devices[service_info.address] = service_info
 
-        # Discover SpinTouch devices
-        current_addresses = self._async_current_ids()
-
-        for discovery_info in async_discovered_service_info(self.hass, connectable=True):
-            if discovery_info.address in current_addresses:
-                continue
-            if (
-                discovery_info.name
-                and discovery_info.name.startswith(DEVICE_NAME_PREFIX)
-            ):
-                self._discovered_devices[discovery_info.address] = discovery_info
-
-        # If devices found, show picker. Otherwise show manual entry.
         if self._discovered_devices:
+            # Show picker for discovered devices
+            addresses = {
+                addr: f"{info.name or 'SpinTouch'} ({addr})"
+                for addr, info in self._discovered_devices.items()
+            }
+            return self.async_show_form(
+                step_id="user",
+                data_schema=vol.Schema(
+                    {vol.Required(CONF_ADDRESS): vol.In(addresses)}
+                ),
+                errors=errors,
+            )
+        else:
+            # No devices found - allow manual entry
             return self.async_show_form(
                 step_id="user",
                 data_schema=vol.Schema(
                     {
-                        vol.Required(CONF_ADDRESS): vol.In(
-                            {
-                                address: f"{info.name} ({address})"
-                                for address, info in self._discovered_devices.items()
-                            }
-                        ),
+                        vol.Required(CONF_ADDRESS): str,
                     }
                 ),
+                errors=errors,
+                description_placeholders={"no_devices": "true"},
             )
-
-        # No devices found - allow manual MAC address entry
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_ADDRESS): str,
-                }
-            ),
-            description_placeholders={
-                "example": "AA:BB:CC:DD:EE:FF",
-            },
-        )
