@@ -64,25 +64,25 @@ async def async_setup_entry(
         else configured_disk_series
     )
 
-    # Determine which sensors to skip based on disk series
-    skip_sensors = _get_skip_sensors(disk_series)
+    # Determine which sensors should be disabled by default based on disk series
+    disabled_sensors = _get_disabled_sensors(disk_series)
 
     entities: list[SensorEntity] = []
 
     # Primary sensors from BLE data
     for sensor_def in SENSORS:
-        if sensor_def.key not in skip_sensors:
-            entities.append(
-                SpinTouchSensor(
-                    coordinator=coordinator,
-                    entry=entry,
-                    key=sensor_def.key,
-                    name=sensor_def.name,
-                    unit=sensor_def.unit,
-                    icon=sensor_def.icon,
-                    decimals=sensor_def.decimals,
-                )
+        entities.append(
+            SpinTouchSensor(
+                coordinator=coordinator,
+                entry=entry,
+                key=sensor_def.key,
+                name=sensor_def.name,
+                unit=sensor_def.unit,
+                icon=sensor_def.icon,
+                decimals=sensor_def.decimals,
+                enabled_default=sensor_def.key not in disabled_sensors,
             )
+        )
 
     # Calculated sensors
     for calc_sensor in CALCULATED_SENSORS:
@@ -110,17 +110,23 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _get_skip_sensors(disk_series: str) -> set[str]:
-    """Get sensors to skip based on disk series.
+def _get_disabled_sensors(disk_series: str) -> set[str]:
+    """Get sensors to disable by default based on disk series.
 
-    Disk 203/204: Have Phosphate (0x0E)
+    These sensors are created but disabled by default because they're
+    not available on the current disk type. Users can enable them manually
+    if needed.
+
+    Disk 203/204: Have Phosphate (0x0E), no Borate
     Disk 303/304: Have Borate (0x0D), no Phosphate
+    Disk 503: Salt pools - has Borate, no Phosphate
     """
-    if disk_series in ("303", "304"):
-        return {"phosphate"}
+    if disk_series in ("303", "304", "503"):
+        return {"phosphate", "bromine"}
     if disk_series in ("203", "204"):
-        return {"borate"}
-    return set()
+        return {"borate", "bromine"}
+    # Unknown disk - disable exclusive sensors
+    return {"bromine"}
 
 
 class SpinTouchSensor(
@@ -143,6 +149,7 @@ class SpinTouchSensor(
         unit: str | None,
         icon: str,
         decimals: int,
+        enabled_default: bool = True,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -153,6 +160,7 @@ class SpinTouchSensor(
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_suggested_display_precision = decimals
+        self._attr_entity_registry_enabled_default = enabled_default
 
     async def async_added_to_hass(self) -> None:
         """Restore state on startup."""
