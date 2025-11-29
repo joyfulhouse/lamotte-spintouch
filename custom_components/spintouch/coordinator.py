@@ -439,23 +439,10 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             self._data.connection_enabled = True
             self.async_set_updated_data(self._data)
 
-            # Check if device is currently visible - if so, connect immediately
-            # This handles the case where device advertised during stay_disconnected period
-            # Check both connectable and non-connectable advertisements
-            service_info = bluetooth.async_last_service_info(
-                self.hass, self.address, connectable=True
-            ) or bluetooth.async_last_service_info(self.hass, self.address, connectable=False)
-            if service_info:
-                _LOGGER.info(
-                    "Device %s is currently visible, attempting connection",
-                    self.address,
-                )
-                self.hass.async_create_task(self.async_connect())
-            else:
-                _LOGGER.debug(
-                    "Device %s not currently visible, will connect when seen",
-                    self.address,
-                )
+            # Try to connect - the BLE proxy may be able to reach the device
+            # even without a recent advertisement
+            _LOGGER.info("Attempting to reconnect to %s", self.address)
+            self.hass.async_create_task(self.async_connect())
 
         self._reconnect_timer = self.hass.loop.call_later(RECONNECT_DELAY, _reconnect_callback)
         _LOGGER.info(
