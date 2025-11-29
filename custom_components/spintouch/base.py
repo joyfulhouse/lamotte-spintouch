@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
 
@@ -24,6 +24,12 @@ class SpinTouchEntity:
     This mixin should be used with CoordinatorEntity (or any entity that has
     a coordinator attribute) to provide consistent device info across all entities.
     """
+
+    # Type hints for attributes set by _setup_spintouch_device
+    # Using Any to avoid conflicts with Entity base class definitions
+    _attr_unique_id: Any
+    _attr_name: Any
+    _attr_device_info: Any
 
     def _setup_spintouch_device(
         self,

@@ -471,7 +471,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             _LOGGER.info("Unexpected disconnect - starting visibility checks")
             self._start_visibility_checks()
 
-    def _on_status_notification(self, _sender: int, _data: bytearray) -> None:
+    def _on_status_notification(self, _sender: object, _data: bytearray) -> None:
         """Handle status notification from SpinTouch."""
         _LOGGER.debug("Status notification received, reading data...")
         self.hass.async_create_task(self._async_read_data())
