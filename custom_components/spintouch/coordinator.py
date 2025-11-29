@@ -469,11 +469,13 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Handle Bluetooth event - device advertisement received."""
-        _LOGGER.debug(
-            "Bluetooth event for %s: %s (RSSI: %s)",
+        _LOGGER.info(
+            "Bluetooth advertisement from %s: %s (RSSI: %s, connected: %s, stay_disconnected: %s)",
             self.address,
             change,
             service_info.rssi,
+            self._data.connected,
+            self._stay_disconnected,
         )
         self._service_info = service_info
 
@@ -483,7 +485,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             and not self._stay_disconnected
             and not self._connect_lock.locked()
         ):
-            _LOGGER.debug("Device seen, attempting connection...")
+            _LOGGER.info("Device seen and not connected, attempting connection...")
             self.hass.async_create_task(self.async_connect())
         elif self._stay_disconnected:
-            _LOGGER.debug("Device seen but in reconnect delay period - not connecting")
+            _LOGGER.info("Device seen but in reconnect delay period - not connecting")

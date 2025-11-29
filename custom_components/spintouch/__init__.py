@@ -49,13 +49,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.async_set_updated_data(coordinator._data)
 
     # Register for Bluetooth callbacks when device is seen
-    # Use ACTIVE mode to ensure we're actively looking for the device
+    # Register both ACTIVE (triggers scanning) and PASSIVE (receives existing scans)
     entry.async_on_unload(
         bluetooth.async_register_callback(
             hass,
             coordinator.async_handle_bluetooth_event,
             BluetoothCallbackMatcher({ADDRESS: address}),
             BluetoothScanningMode.ACTIVE,
+        )
+    )
+    entry.async_on_unload(
+        bluetooth.async_register_callback(
+            hass,
+            coordinator.async_handle_bluetooth_event,
+            BluetoothCallbackMatcher({ADDRESS: address}),
+            BluetoothScanningMode.PASSIVE,
         )
     )
 
