@@ -5,12 +5,23 @@
         "title": "LaMotte WaterLink Spin Touch",
         "description": "Select a discovered SpinTouch device or enter the Bluetooth address manually.",
         "data": {
-          "address": "Bluetooth Address"
+          "address": "Bluetooth Address",
+          "disk_series": "Disk Series"
+        },
+        "data_description": {
+          "address": "The Bluetooth MAC address of your SpinTouch device",
+          "disk_series": "The SpinDisk series you use (Auto-detect works for most users)"
         }
       },
       "bluetooth_confirm": {
         "title": "Confirm SpinTouch",
-        "description": "Do you want to set up {name} ({address})?"
+        "description": "Do you want to set up {name} ({address})?",
+        "data": {
+          "disk_series": "Disk Series"
+        },
+        "data_description": {
+          "disk_series": "The SpinDisk series you use (Auto-detect works for most users)"
+        }
       }
     },
     "abort": {
@@ -19,6 +30,74 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to device"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Free Chlorine"
+      },
+      "total_chlorine": {
+        "name": "Total Chlorine"
+      },
+      "bromine": {
+        "name": "Bromine"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Total Alkalinity"
+      },
+      "calcium": {
+        "name": "Calcium Hardness"
+      },
+      "cyanuric_acid": {
+        "name": "Cyanuric Acid"
+      },
+      "salt": {
+        "name": "Salt"
+      },
+      "copper": {
+        "name": "Copper"
+      },
+      "iron": {
+        "name": "Iron"
+      },
+      "phosphate": {
+        "name": "Phosphate"
+      },
+      "borate": {
+        "name": "Borate"
+      },
+      "combined_chlorine": {
+        "name": "Combined Chlorine"
+      },
+      "fc_cya_ratio": {
+        "name": "FC/CYA Ratio"
+      },
+      "last_reading": {
+        "name": "Last Reading"
+      },
+      "report_time": {
+        "name": "Report Time"
+      },
+      "water_quality": {
+        "name": "Water Quality"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Connected"
+      },
+      "connection_enabled": {
+        "name": "Connection Enabled"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Force Reconnect"
+      }
     }
   }
 }

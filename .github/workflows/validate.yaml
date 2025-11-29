@@ -1,0 +1,182 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Linting and Type Checking
+  lint:
+    name: Ruff & Mypy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run Ruff linter
+        run: uv run ruff check custom_components/
+
+      - name: Run Ruff formatter check
+        run: uv run ruff format --check custom_components/
+
+      - name: Run Mypy type checker
+        run: uv run mypy custom_components/
+
+  # HACS Validation
+  validate-hacs:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  # Hassfest Validation
+  validate-hassfest:
+    name: Hassfest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  # Quality Scale Compliance Check
+  quality-scale:
+    name: Quality Scale Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Bronze tier requirements
+        run: |
+          echo "## Bronze Tier Requirements" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for config_flow.py (UI Setup)
+          if [ -f "custom_components/spintouch/config_flow.py" ]; then
+            echo "✅ UI-based setup: config_flow.py exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ UI-based setup: config_flow.py missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check for manifest.json
+          if [ -f "custom_components/spintouch/manifest.json" ]; then
+            echo "✅ Manifest: manifest.json exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Manifest: manifest.json missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check for strings.json (basic documentation)
+          if [ -f "custom_components/spintouch/strings.json" ]; then
+            echo "✅ Strings: strings.json exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Strings: strings.json missing" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Bronze tier: PASS**" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Silver tier requirements
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Silver Tier Requirements" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for translations
+          if [ -d "custom_components/spintouch/translations" ]; then
+            echo "✅ Translations: translations/ directory exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Translations: translations/ directory missing" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for coordinator (stable experience)
+          if [ -f "custom_components/spintouch/coordinator.py" ]; then
+            echo "✅ Data Coordinator: coordinator.py exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Data Coordinator: coordinator.py missing" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Silver tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Gold tier requirements
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Gold Tier Requirements" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for Bluetooth discovery in manifest
+          if grep -q '"bluetooth"' custom_components/spintouch/manifest.json; then
+            echo "✅ Auto-discovery: Bluetooth discovery configured" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Auto-discovery: Bluetooth discovery not configured" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for documentation
+          if [ -f "docs/TROUBLESHOOTING.md" ]; then
+            echo "✅ Troubleshooting: docs/TROUBLESHOOTING.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Troubleshooting: docs/TROUBLESHOOTING.md missing" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Gold tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Platinum tier requirements
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Platinum Tier Requirements" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for type annotations (verified by mypy in lint job)
+          echo "✅ Type annotations: Verified by mypy job" >> $GITHUB_STEP_SUMMARY
+
+          # Check for async patterns
+          if grep -q "async def" custom_components/spintouch/*.py; then
+            echo "✅ Async implementation: async def patterns found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Async implementation: No async patterns detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platinum tier: PARTIAL** (code quality meets standards)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Quality Scale Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See [docs/QUALITY_SCALE.md](../docs/QUALITY_SCALE.md) for detailed compliance status." >> $GITHUB_STEP_SUMMARY
