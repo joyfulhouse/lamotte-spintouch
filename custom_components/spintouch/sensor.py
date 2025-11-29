@@ -150,12 +150,8 @@ class SpinTouchSensor(
 
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and self._key in self.coordinator.data.values
-        )
+        """Return if entity is available (has data from BLE or restored state)."""
+        return self.coordinator.data is not None and self._key in self.coordinator.data.values
 
 
 class SpinTouchLastReadingSensor(
@@ -209,6 +205,14 @@ class SpinTouchLastReadingSensor(
             return data.last_reading_time
         return None
 
+    @property
+    def available(self) -> bool:
+        """Return if entity is available (has data from BLE or restored state)."""
+        return (
+            self.coordinator.data is not None
+            and self.coordinator.data.last_reading_time is not None
+        )
+
 
 class SpinTouchReportTimeSensor(
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
@@ -259,6 +263,11 @@ class SpinTouchReportTimeSensor(
         if data and data.report_time:
             return data.report_time
         return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available (has data from BLE or restored state)."""
+        return self.coordinator.data is not None and self.coordinator.data.report_time is not None
 
 
 class SpinTouchWaterQualitySensor(
@@ -378,3 +387,8 @@ class SpinTouchWaterQualitySensor(
         if len(issues) >= 3:
             return "mdi:water-alert"
         return "mdi:water-remove"
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available (has data from BLE or restored state)."""
+        return self.coordinator.data is not None and bool(self.coordinator.data.values)
