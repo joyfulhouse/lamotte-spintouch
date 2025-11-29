@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
-
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 
 from .const import DOMAIN, SERVICE_UUID
 
+if TYPE_CHECKING:
+    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+
 _LOGGER = logging.getLogger(__name__)
 
 
-class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
+class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,misc]
     """Handle a config flow for SpinTouch."""
 
     VERSION = 1
@@ -68,9 +69,7 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user step - manual setup or pick from discovered devices."""
         errors: dict[str, str] = {}
 
@@ -96,13 +95,9 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Scan for SpinTouch devices
         self._discovered_devices = {}
-        for service_info in bluetooth.async_discovered_service_info(
-            self.hass, connectable=True
-        ):
+        for service_info in bluetooth.async_discovered_service_info(self.hass, connectable=True):
             # Check for SpinTouch service UUID
-            if SERVICE_UUID.lower() in [
-                uuid.lower() for uuid in service_info.service_uuids
-            ]:
+            if SERVICE_UUID.lower() in [uuid.lower() for uuid in service_info.service_uuids]:
                 self._discovered_devices[service_info.address] = service_info
 
         if self._discovered_devices:
@@ -113,9 +108,7 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):
             }
             return self.async_show_form(
                 step_id="user",
-                data_schema=vol.Schema(
-                    {vol.Required(CONF_ADDRESS): vol.In(addresses)}
-                ),
+                data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(addresses)}),
                 errors=errors,
             )
         else:

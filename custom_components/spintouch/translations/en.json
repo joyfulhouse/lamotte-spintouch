@@ -64,8 +64,16 @@
       "connected": {
         "name": "Connected"
       },
+      "connection_enabled": {
+        "name": "Connection Enabled"
+      },
       "problem": {
         "name": "Water Quality Problem"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Force Reconnect"
       }
     }
   }

@@ -2,24 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
-    SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CALCULATED_SENSORS, DOMAIN, SENSORS
 from .coordinator import SpinTouchCoordinator, SpinTouchData
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 
 async def async_setup_entry(
@@ -52,23 +54,21 @@ async def async_setup_entry(
             SpinTouchSensor(
                 coordinator=coordinator,
                 entry=entry,
-                key=calc_sensor["key"],
-                name=calc_sensor["name"],
-                unit=calc_sensor["unit"],
-                icon=calc_sensor["icon"],
-                decimals=calc_sensor["decimals"],
+                key=calc_sensor.key,
+                name=calc_sensor.name,
+                unit=calc_sensor.unit,
+                icon=calc_sensor.icon,
+                decimals=calc_sensor.decimals,
             )
         )
 
     # Diagnostic sensors
-    entities.append(
-        SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry)
-    )
+    entities.append(SpinTouchLastReadingSensor(coordinator=coordinator, entry=entry))
 
     async_add_entities(entities)
 
 
-class SpinTouchSensor(CoordinatorEntity[SpinTouchCoordinator], SensorEntity):
+class SpinTouchSensor(CoordinatorEntity[SpinTouchCoordinator], SensorEntity):  # type: ignore[misc]
     """Sensor for SpinTouch water quality parameters."""
 
     _attr_has_entity_name = True
@@ -106,7 +106,8 @@ class SpinTouchSensor(CoordinatorEntity[SpinTouchCoordinator], SensorEntity):
     def native_value(self) -> float | None:
         """Return the sensor value."""
         if self.coordinator.data:
-            return self.coordinator.data.values.get(self._key)
+            value = self.coordinator.data.values.get(self._key)
+            return float(value) if value is not None else None
         return None
 
     @property
@@ -120,7 +121,8 @@ class SpinTouchSensor(CoordinatorEntity[SpinTouchCoordinator], SensorEntity):
 
 
 class SpinTouchLastReadingSensor(
-    CoordinatorEntity[SpinTouchCoordinator], SensorEntity
+    CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
+    SensorEntity,  # type: ignore[misc]
 ):
     """Sensor showing the last reading timestamp."""
 
@@ -150,6 +152,7 @@ class SpinTouchLastReadingSensor(
     @property
     def native_value(self) -> datetime | None:
         """Return the last reading timestamp."""
-        if self.coordinator.data:
-            return self.coordinator.data.last_reading_time
+        data: SpinTouchData | None = self.coordinator.data
+        if data and data.last_reading_time:
+            return data.last_reading_time
         return None

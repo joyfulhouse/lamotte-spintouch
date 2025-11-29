@@ -142,20 +142,32 @@ SENSORS: list[SensorDefinition] = [
     ),
 ]
 
+
+@dataclass
+class CalculatedSensorDefinition:
+    """Definition for a calculated SpinTouch sensor."""
+
+    key: str
+    name: str
+    unit: str | None
+    icon: str
+    decimals: int
+
+
 # Calculated sensors (derived from primary sensors)
-CALCULATED_SENSORS = [
-    {
-        "key": "combined_chlorine",
-        "name": "Combined Chlorine",
-        "unit": "ppm",
-        "icon": "mdi:flask-outline",
-        "decimals": 2,
-    },
-    {
-        "key": "fc_cya_ratio",
-        "name": "FC/CYA Ratio",
-        "unit": "%",
-        "icon": "mdi:percent",
-        "decimals": 1,
-    },
+CALCULATED_SENSORS: list[CalculatedSensorDefinition] = [
+    CalculatedSensorDefinition(
+        key="combined_chlorine",
+        name="Combined Chlorine",
+        unit="ppm",
+        icon="mdi:flask-outline",
+        decimals=2,
+    ),
+    CalculatedSensorDefinition(
+        key="fc_cya_ratio",
+        name="FC/CYA Ratio",
+        unit="%",
+        icon="mdi:percent",
+        decimals=1,
+    ),
 ]
