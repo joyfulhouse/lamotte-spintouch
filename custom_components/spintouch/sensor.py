@@ -16,8 +16,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .base import SpinTouchEntity
 from .const import (
     CALCULATED_SENSORS,
-    CONF_DISK_SERIES,
-    DEFAULT_DISK_SERIES,
     DOMAIN,
     SENSORS,
 )
@@ -56,20 +54,9 @@ async def async_setup_entry(
     """Set up SpinTouch sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Determine disk series (auto-detected or configured)
-    configured_disk_series = entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
-    disk_series = (
-        coordinator.data.detected_disk_series
-        if coordinator.data and coordinator.data.detected_disk_series
-        else configured_disk_series
-    )
-
-    # Determine which sensors should be disabled by default based on disk series
-    disabled_sensors = _get_disabled_sensors(disk_series)
-
     entities: list[SensorEntity] = []
 
-    # Primary sensors from BLE data
+    # Primary sensors from BLE data - create all, users can disable if not needed
     for sensor_def in SENSORS:
         entities.append(
             SpinTouchSensor(
@@ -80,7 +67,6 @@ async def async_setup_entry(
                 unit=sensor_def.unit,
                 icon=sensor_def.icon,
                 decimals=sensor_def.decimals,
-                enabled_default=sensor_def.key not in disabled_sensors,
             )
         )
 
@@ -110,26 +96,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _get_disabled_sensors(disk_series: str) -> set[str]:
-    """Get sensors to disable by default based on disk series.
-
-    These sensors are created but disabled by default because they're
-    not available on the current disk type. Users can enable them manually
-    if needed.
-
-    Disk 203/204: Have Phosphate (0x0E), no Borate
-    Disk 303/304: Have Borate (0x0D), no Phosphate
-    Disk 503: Salt pools - has Borate, no Phosphate
-    """
-    if disk_series in ("303", "304", "503"):
-        return {"phosphate", "bromine"}
-    if disk_series in ("203", "204"):
-        return {"borate", "bromine"}
-    # Auto or unknown - disable all exclusive sensors until we know
-    # Users can manually enable if needed
-    return {"phosphate", "borate", "bromine"}
-
-
 class SpinTouchSensor(
     SpinTouchEntity,
     CoordinatorEntity[SpinTouchCoordinator],  # type: ignore[misc]
@@ -150,7 +116,6 @@ class SpinTouchSensor(
         unit: str | None,
         icon: str,
         decimals: int,
-        enabled_default: bool = True,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -161,7 +126,6 @@ class SpinTouchSensor(
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_suggested_display_precision = decimals
-        self._attr_entity_registry_enabled_default = enabled_default
 
     async def async_added_to_hass(self) -> None:
         """Restore state on startup."""
