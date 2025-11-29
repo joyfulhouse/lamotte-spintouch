@@ -30,14 +30,17 @@ Home Assistant integration for the **LaMotte WaterLink Spin Touch** water testin
 
 ## Installation
 
+> **Important:** The Spin Touch must be **powered on** and displaying a **report screen** (showing test results) for Bluetooth discovery to work. The device only advertises via BLE when it has results to share.
+
 ### HACS (Recommended)
 
 1. Add this repository as a custom repository in HACS
 2. Search for "LaMotte WaterLink Spin Touch"
 3. Install and restart Home Assistant
-4. Go to **Settings → Devices & Services → Add Integration**
-5. Search for "LaMotte WaterLink Spin Touch"
-6. Select your device (auto-discovered) or enter MAC address
+4. **Turn on your Spin Touch and navigate to a report screen**
+5. Go to **Settings → Devices & Services → Add Integration**
+6. Search for "LaMotte WaterLink Spin Touch"
+7. Select your device (auto-discovered) or enter MAC address manually
 
 ### Manual Installation
 
