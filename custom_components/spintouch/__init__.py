@@ -45,6 +45,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = SpinTouchCoordinator(hass, address, service_info)
 
+    # Initialize coordinator data so restore can work before device connects
+    coordinator.async_set_updated_data(coordinator._data)
+
     # Register for Bluetooth callbacks when device is seen
     # Use PASSIVE mode as ESPHome proxies typically do passive scanning
     entry.async_on_unload(
