@@ -52,13 +52,22 @@ class SpinTouchData:
     def update_from_bytes(self, data: bytes) -> bool:
         """Parse BLE data and update values.
 
-        Returns True if data was valid and parsed successfully.
+        Returns True if data was valid AND represents a new report (different timestamp).
         """
         if len(data) < MIN_DATA_SIZE:
             _LOGGER.warning("Data too short: %d bytes", len(data))
             return False
 
         _LOGGER.debug("Parsing %d bytes of SpinTouch data", len(data))
+
+        # Parse report timestamp first to check if this is new data
+        old_report_time = self.report_time
+        self._parse_report_timestamp(data)
+
+        # If report timestamp hasn't changed, this is the same data - skip update
+        if old_report_time is not None and self.report_time == old_report_time:
+            _LOGGER.debug("Report timestamp unchanged, skipping update")
+            return False
 
         for sensor in SENSORS:
             try:
@@ -100,9 +109,6 @@ class SpinTouchData:
 
         if fc is not None and cya is not None and cya > 0:
             self.values["fc_cya_ratio"] = round((fc / cya) * 100, 1)
-
-        # Parse report timestamp from bytes 76-81 (YY-MM-DD-HH-MM-SS)
-        self._parse_report_timestamp(data)
 
         self.last_reading_time = dt_util.utcnow()
         return True

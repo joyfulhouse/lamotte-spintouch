@@ -129,13 +129,13 @@ class SpinTouchSensor(
         """Restore state on startup."""
         await super().async_added_to_hass()
 
-        # Try to restore last known value
+        # Try to restore last known value (only if not already set)
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 restored_value = float(last_state.state)
-                # Store restored value in coordinator data
-                if self.coordinator.data:
+                # Only restore if coordinator doesn't already have this value
+                if self.coordinator.data and self._key not in self.coordinator.data.values:
                     self.coordinator.data.values[self._key] = restored_value
             except (ValueError, TypeError):
                 pass
@@ -188,11 +188,16 @@ class SpinTouchLastReadingSensor(
         """Restore state on startup."""
         await super().async_added_to_hass()
 
+        # Only restore if not already set
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 restored_dt = dt_util.parse_datetime(last_state.state)
-                if restored_dt and self.coordinator.data:
+                if (
+                    restored_dt
+                    and self.coordinator.data
+                    and not self.coordinator.data.last_reading_time
+                ):
                     self.coordinator.data.last_reading_time = restored_dt
             except (ValueError, TypeError):
                 pass
@@ -247,11 +252,12 @@ class SpinTouchReportTimeSensor(
         """Restore state on startup."""
         await super().async_added_to_hass()
 
+        # Only restore if not already set
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 restored_dt = dt_util.parse_datetime(last_state.state)
-                if restored_dt and self.coordinator.data:
+                if restored_dt and self.coordinator.data and not self.coordinator.data.report_time:
                     self.coordinator.data.report_time = restored_dt
             except (ValueError, TypeError):
                 pass
