@@ -2,6 +2,7 @@
 
 Discovered via nRF Connect on 2025-11-28, updated 2025-11-29.
 APK reverse engineering added 2025-11-29.
+**Full decompilation completed 2025-11-29** - authoritative protocol details from C# source.
 
 ## Device Information
 
@@ -21,12 +22,19 @@ APK reverse engineering added 2025-11-29.
 
 ## SpinTouch Service Characteristics
 
+### Core Characteristics (from decompiled source)
+
+| App Constant | UUID | Properties | Description |
+|--------------|------|------------|-------------|
+| `SPIN_TOUCH_TTEST` | `00000000-0000-1000-8000-bbbd00000010` | Read | **Test Results** - Main test data (91 bytes) |
+| `SPIN_TOUCH_TESTAVAIL` | `00000000-0000-1000-8000-bbbd00000011` | Notify, Read | **Status** - Notifies when test ready |
+| `SPIN_TOUCH_SENDTEST` | `00000000-0000-1000-8000-bbbd00000012` | Read, Write | Send test command |
+| `SPIN_TOUCH_TESTACK` | `00000000-0000-1000-8000-bbbd00000013` | Read, Write | Test acknowledgment (send 0x01 after read) |
+
+### Additional Characteristics (discovered)
+
 | Name | UUID | Properties | Description |
 |------|------|------------|-------------|
-| Test Results | `00000000-0000-1000-8000-bbbd00000010` | Read | Main test results data (112 bytes) |
-| Status | `00000000-0000-1000-8000-bbbd00000011` | Notify, Read | Status updates (0x01-0x0B) |
-| Config 1 | `00000000-0000-1000-8000-bbbd00000012` | Read, Write | Configuration |
-| Config 2 | `00000000-0000-1000-8000-bbbd00000013` | Read, Write | Configuration |
 | Command 1 | `00000000-0000-1000-8000-bbbd00000020` | Write | Command input |
 | Command Response | `00000000-0000-1000-8000-bbbd00000021` | Notify, Read | Command response (64 bytes) |
 | Command 2 | `00000000-0000-1000-8000-bbbd00000022` | Write | Command input |
@@ -39,26 +47,135 @@ APK reverse engineering added 2025-11-29.
 | Response 3 | `00000000-0000-1000-8000-bbbd00000051` | Notify, Read | Response data (125 bytes) |
 | Response 4 | `00000000-0000-1000-8000-bbbd00000052` | Notify, Read | Response data (125 bytes) |
 
+### Client Characteristic Config (for notifications)
+
+```
+CLIENT_CHARACTERISTIC_CONFIG = 00002902-0000-1000-8000-00805f9b34fb
+```
+
 ## Test Results Data Format (Characteristic 0x...10)
 
-The test results characteristic contains 112 bytes with the following structure:
+**Authoritative format from decompiled `TestStructure.Parse()` method.**
 
-### Header (Bytes 0-3)
+### Complete Data Structure (91 bytes)
+
+| Offset | Length | Description |
+|--------|--------|-------------|
+| 0-3 | 4 | Start Signature: `[0x01, 0x02, 0x03, 0x05]` |
+| 4-75 | 72 | Test Results: 12 entries × 6 bytes each |
+| 76-83 | 8 | Test Time: YY, MM, DD, HH, MM, SS, AM/PM, Military |
+| 84 | 1 | Number of Valid Results |
+| 85 | 1 | Disk Type (index into discStr array) |
+| 86 | 1 | Sanitizer Type (index into sanStr array) |
+| 87-90 | 4 | End Signature: `[0x07, 0x0B, 0x0D, 0x11]` |
+
+### Start/End Signatures (Prime Numbers!)
+
+```c#
+// IsStartSignature: bytes must be [1, 2, 3, 5]
+_signature[0] == 1 && _signature[1] == 2 && _signature[2] == 3 && _signature[3] == 5
+
+// IsEndSignature: bytes must be [7, 11, 13, 17]
+_signature[0] == 7 && _signature[1] == 11 && _signature[2] == 13 && _signature[3] == 17
 ```
-01-02-03-05
-```
-Purpose unknown, possibly version/format identifier.
 
-### Parameter Entries (Bytes 4-69)
+### Test Result Entry Format (6 bytes each)
 
-Each entry is 6 bytes:
 ```
-[param_id] [flags] [float32_le (4 bytes)]
+[TestType] [Decimals] [float32_le (4 bytes)]
 ```
 
-**IMPORTANT**: The parameters present and their offsets vary by disk series! Parse by scanning for param_ids, not fixed offsets.
+- **TestType**: Parameter ID (see mapping below)
+- **Decimals**: Number of decimal places for display
+- **Value**: 32-bit float, little-endian
 
-### Parameter ID Reference
+### TestType (Param ID) to Chemical Mapping
+
+From decompiled `testStr` array and `GenerateTestFactor()` method:
+
+| TestType | testStr | TestFactorCode | Chemical Name |
+|----------|---------|----------------|---------------|
+| 0 | BLANK | NULL | Blank/unused |
+| 1 | FCL | FCL (2) | Free Chlorine |
+| 2 | TCL | TCL (3) | Total Chlorine |
+| 3 | BR | BR (5) | Bromine |
+| 4 | BIG | BIGUANIDE (6) | Biguanide |
+| 5 | SHOCK | BIGSHOCK (7) | Biguanide Shock |
+| 6 | PH | PH (8) | pH |
+| 7 | ALK | ALK (9) | Total Alkalinity |
+| 8 | HARDHR | HARD (10) | Calcium Hardness (High Range) |
+| 9 | HARDLR | HARD (10) | Calcium Hardness (Low Range) |
+| 10 | CYA | CYA (12) | Cyanuric Acid |
+| 11 | IRON | IRON (13) | Iron |
+| 12 | COPPER | COPPER (16) | Copper |
+| 13 | BOR | BORATE (17) | **Borate** |
+| 14 | PHOS | PHOSPHATE (18) | **Phosphate** (ppb) |
+| 15 | CALH | HARDCA (11) | Calcium Hardness |
+| 16 | SALT | SALT (19) | Salt |
+| 17 | CCL | CCL (4) | Combined Chlorine |
+
+**Note**: TestType 13 (0x0D) is officially **Borate**, and TestType 14 (0x0E) is **Phosphate**. Earlier observations suggesting disk-dependent interpretation may need re-verification.
+
+### Disk Type Mapping
+
+From decompiled `discStr` array:
+
+| Index | Value | Description |
+|-------|-------|-------------|
+| 0 | 101 | Series 101 |
+| 1 | 102 | Series 102 |
+| 2 | 201 | Series 201 |
+| 3 | 202 | Series 202 |
+| 4 | 301 | Series 301 |
+| 5 | 302 | Series 302 |
+| 6 | 401 | Series 401 |
+| 7 | 402 | Series 402 (Biguanide) |
+| 8 | 501 | Series 501 |
+| 9 | 601 | Series 601 |
+| 16 | DISC_103 | Series 103 |
+| 17 | DISC_203 | Series 203 (Phosphate) |
+| 18 | DISC_303 | Series 303 (Borate) |
+| 19 | DISC_503 | Series 503 |
+| 20 | DISC_603 | Series 603 |
+| 22 | DISC_104 | Series 104 |
+| 23 | DISC_204 | Series 204 (High Range + Phosphate) |
+| 24 | DISC_304 | Series 304 (High Range + Borate) |
+
+### Sanitizer Type Mapping
+
+From decompiled `sanStr` array:
+
+| Index | Value | Description |
+|-------|-------|-------------|
+| 0 | Chlorine | Chlorine-based sanitizer |
+| 1 | Salt | Salt chlorine generator |
+| 2 | Bromine | Bromine-based sanitizer |
+| 3 | Biguanide | Biguanide (Baquacil) |
+| 4 | DWTreated | Drinking water treated |
+| 5 | AQFresh | AquaFresh |
+| 6 | CTCL | CT Chlorine |
+| 7 | CTBR | CT Bromine |
+| 8 | tsNULL | Null/unset |
+
+### TestTime Format (8 bytes)
+
+```c#
+// Fill(byte y, byte m, byte d, byte h, byte min, byte s, byte p, byte b_24)
+DateTime = new DateTime(2000 + _year, _month, _date, _hour, _minute, _seconds);
+```
+
+| Byte | Description |
+|------|-------------|
+| 0 | Year (2-digit, add 2000) |
+| 1 | Month (1-12) |
+| 2 | Day (1-31) |
+| 3 | Hour (1-12 or 0-23) |
+| 4 | Minute (0-59) |
+| 5 | Seconds (0-59) |
+| 6 | AM/PM flag (0=AM, 1=PM) |
+| 7 | Military flag (0=12h, 1=24h) |
+
+### Legacy Parameter ID Reference
 
 | Param ID | Name | Unit | Disk Series |
 |----------|------|------|-------------|
@@ -71,11 +188,11 @@ Each entry is 6 bytes:
 | 0x0A | Cyanuric Acid | ppm | All |
 | 0x0B | Iron | ppm | 203, 303 (not on 204, 304) |
 | 0x0C | Copper | ppm | All (0-3.0 ppm) |
-| 0x0D | Phosphate/Borate | ppm/ppb | 203/204=Phosphate, 303/304=Borate |
-| 0x0E | Borate | ppm | 203, 204 |
+| 0x0D | Borate | ppm | Per app: Borate (verify with device) |
+| 0x0E | Phosphate | ppb | Per app: Phosphate (verify with device) |
 | 0x0F | Calcium Hardness (Standard) | ppm | 203, 303, 402 (0-800 ppm) |
 | 0x10 | Salt | ppm | All (0-5000 ppm) |
-| 0x11 | Unknown | - | All (always 0?) |
+| 0x11 | Combined Chlorine | ppm | Calculated (TC - FC) |
 
 ### Disk Series Summary
 
@@ -361,88 +478,128 @@ Key points:
 
 ## APK Reverse Engineering
 
-The WaterLink Solutions Home Android app (`com.lamotte.WaterLinkSolutionsHome`) was decompiled to understand the BLE protocol.
+The WaterLink Solutions Home Android app (`com.lamotte.WaterLinkSolutionsHome`) was fully decompiled to C# source code.
+
+### Decompilation Tools
+
+```bash
+# Extract DLLs from Xamarin APK
+uv tool install git+https://github.com/jakev/pyxamstore.git
+pyxamstore unpack -d assemblies.blob
+
+# Decompile .NET assemblies to C#
+dotnet tool install -g ilspycmd
+ilspycmd WaterLinkSolutionsHome.dll -o decompiled/
+```
 
 ### Extracted Assemblies
 
-Using `pyxamstore` to extract from `assemblies.blob`:
-
 | Assembly | Size | Purpose |
 |----------|------|---------|
-| `WaterLinkSolutionsHome.dll` | 8.6 MB | Main app logic, UI |
-| `WaterLinkSolutionsHome.Android.dll` | 1.2 MB | Android-specific code, BLE |
+| `WaterLinkSolutionsHome.dll` | 8.6 MB | Main app logic, UI, data classes |
+| `WaterLinkSolutionsHome.Android.dll` | 1.2 MB | Android BLE implementation |
 | `LaMotte.TreatmentEngine.dll` | 54 KB | Chemical dosage calculations |
-| `LaMotte.UniversalTestFactorCodes.dll` | 6.1 KB | Test parameter definitions |
+| `LaMotte.UniversalTestFactorCodes.dll` | 6.1 KB | Test parameter enum definitions |
 
-### BLE Implementation Classes
-
-From `WaterLinkSolutionsHome.Android.dll`:
+### BLE Protocol Flow (from AndroidBLESpinTouch class)
 
 ```
-AndroidBLESpinTouch                    - Main BLE handler class
-IBLESpinTouch                          - Interface for SpinTouch BLE
-LEGattConnectionCallback               - GATT callback handler
-  ├── OnServicesDiscovered             - Called when services found
-  ├── OnCharacteristicChanged          - Called on notifications
-  └── OnCharacteristicRead             - Called on read responses
+1. Scan for device name containing "SpinTouch"
+2. Connect via GATT
+3. Discover services
+4. Find SPIN_TOUCH_SERVICE by UUID
+5. Get all 4 characteristics by UUID
+6. Enable notifications on SpinTestAvailCharacterisitic
+7. Wait for notification on TESTAVAIL
+8. Read from SpinTTestCharacteristic
+9. Parse data with TestStructure.Parse()
+10. Send ACK (byte 0x01) to SpinTestAckCharacteristic
 ```
 
-### Characteristic Property Names
+### Key C# Source Locations
 
-| App Property Name | Our UUID | Purpose |
-|-------------------|----------|---------|
-| `SpinTTestCharacteristic` | `0x...10` | Main test results data |
-| `SpinTestAvailCharacterisitic` | `0x...11` | Test availability/status |
-| `SpinSendTestCharacterisitic` | `0x...20` | Send test command |
-| `SpinTestAckCharacteristic` | `0x...21` | Test acknowledgment |
+| Class | File Location | Purpose |
+|-------|---------------|---------|
+| `AndroidBLESpinTouch` | Android.dll:59130 | BLE handler |
+| `TestStructure` | Main.dll:181171 | Data parser |
+| `TestStructure.Parse()` | Main.dll:181223 | Parse method |
+| `Constants` | Main.dll:6245 | UUID definitions |
+| `TestFactorCode` | TestFactorCodes.dll:21 | Chemical enum |
 
-### BLE Service Constants
+### UUID Constants (from Constants class)
 
-Found in the Android DLL:
-
-```
-SPIN_TOUCH_SERVICE      - Main SpinTouch BLE service UUID
-SPIN_TOUCH_TTEST        - Test data characteristic
-SPIN_TOUCH_TESTAVAIL    - Test availability characteristic
-SPIN_TOUCH_TESTACK      - Test acknowledgment characteristic
-SPIN_TOUCH_SENDTEST     - Send test command characteristic
-CQ_SERVICE              - ColorQ service (different device)
-```
-
-### Universal Test Factor Codes
-
-From `LaMotte.UniversalTestFactorCodes.dll` - all supported chemical parameters across LaMotte devices:
-
-```
-Water Quality:
-  FREEAMMONIA, CHLORIDE, CHLORINEDIOX, HARDCA, IODINE, NITRATE, NITRITE,
-  OXIDIZER, OXYGEN, PEROXIDE, PHOSPHATE, PHOSPHORUS, SATINDEX, SILICA,
-  SULFATE, SULFIDE, SURFACTANTS, TANNIN, TURBIDITY
-
-Metals:
-  ALUMINUM, BARIUM, CADMIUM, CALCIUMIONS, CHROMIUM, COBALT, COPPER,
-  FERRICIRON, FERRUSIRON, MAGNESIUM, MAGNESIUMIONS, MERCURY, MOLYBDENUM,
-  NICKEL, POTASSIUM
-
-Pool/Spa Specific:
-  BIGSHOCK, BIGUANIDE, BORATE
-
-Industrial:
-  BENZOTRIAZOLE, CARBOHYDRAZIDE, ERYTHORBICACID, FLOURIDE, HYDRAZINE,
-  HYDROQUINONE, KETOXIME, PHENOL
-
-Environmental:
-  AIRTEMP, TEMPERATURE, CYANIDE
+```c#
+public static Guid SPIN_TOUCH_SERVICE = new Guid("00000000-0000-1000-8000-BBBD00000000");
+public static Guid SPIN_TOUCH_TTEST = new Guid("00000000-0000-1000-8000-BBBD00000010");
+public static Guid SPIN_TOUCH_TESTAVAIL = new Guid("00000000-0000-1000-8000-BBBD00000011");
+public static Guid SPIN_TOUCH_SENDTEST = new Guid("00000000-0000-1000-8000-BBBD00000012");
+public static Guid SPIN_TOUCH_TESTACK = new Guid("00000000-0000-1000-8000-BBBD00000013");
+public static Guid CLIENT_CHARACTERISTIC_CONFIG = new Guid("00002902-0000-1000-8000-00805f9b34fb");
+public static string SPIN_TOUCH = "SpinTouch";
 ```
 
-### Key Data Classes
+### BLE Callback Logic (from LEGattConnectionCallback)
 
+```c#
+// OnServicesDiscovered - find characteristics
+foreach (BluetoothGattCharacteristic characteristic in item.Characteristics)
+{
+    if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_SENDTEST.ToString())
+        _parent.SpinSendTestCharacterisitic = characteristic;
+    else if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_TESTACK.ToString())
+        _parent.SpinTestAckCharacteristic = characteristic;
+    else if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_TTEST.ToString())
+        _parent.SpinTTestCharacteristic = characteristic;
+    else if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_TESTAVAIL.ToString())
+        _parent.SpinTestAvailCharacterisitic = characteristic;
+}
+await _parent.EnableNotifications(_parent.SpinTestAvailCharacterisitic);
+
+// OnCharacteristicChanged - notification received
+if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_TESTAVAIL.ToString())
+{
+    Console.WriteLine("Test data is available to read...");
+    await _parent.ReadCharacteristic(_parent.SpinTTestCharacteristic);
+}
+
+// OnCharacteristicRead - data received
+if (characteristic.Uuid.ToString() == Constants.SPIN_TOUCH_TTEST.ToString()
+    && _parent._waterTestViewModel.SpinTouchTestData.Parse(value))
+{
+    _parent._waterTestViewModel.SpinTouchTestReceived();
+    await _parent.WriteCharacteristic(_parent.SpinTestAckCharacteristic, new byte[1] { Convert.ToByte(1) });
+}
 ```
-SpinTouchTestData       - Model for test results
-SpinTouchService        - Service wrapper
-TestResult              - Individual test result
-TestFactor              - Chemical parameter definition
-ConvertBytesToString    - Data conversion utility
+
+### Universal Test Factor Codes Enum
+
+From `LaMotte.UniversalTestFactorCodes.dll`:
+
+```c#
+public enum TestFactorCode
+{
+    NULL = 0,
+    ABS = 1,
+    FCL = 2,      // Free Chlorine
+    TCL = 3,      // Total Chlorine
+    CCL = 4,      // Combined Chlorine
+    BR = 5,       // Bromine
+    BIGUANIDE = 6,
+    BIGSHOCK = 7,
+    PH = 8,
+    ALK = 9,      // Alkalinity
+    HARD = 10,    // Hardness
+    HARDCA = 11,  // Calcium Hardness
+    CYA = 12,     // Cyanuric Acid
+    IRON = 13,
+    FERRICIRON = 14,
+    FERRUSIRON = 15,
+    COPPER = 16,
+    BORATE = 17,
+    PHOSPHATE = 18,
+    SALT = 19,
+    // ... many more industrial/environmental parameters
+}
 ```
 
 ### Treatment Engine
@@ -460,19 +617,22 @@ The `LaMotte.TreatmentEngine.dll` contains chemical dosage calculation logic:
 
 ### ColorQ Support
 
-The app also supports LaMotte ColorQ devices:
+The app also supports LaMotte ColorQ devices with different UUIDs:
 
+```c#
+public static Guid CQ_SERVICE = new Guid("00000000-0000-1000-8001-BBBD00000100");
+public static Guid CQ_TEST_ID = new Guid("00000000-0000-1000-8001-BBBD00000110");
+public static Guid CQ_TEST_AVAIL = new Guid("00000000-0000-1000-8001-BBBD00000111");
+public static Guid CQ_TEST_VALUE_PRECISION = new Guid("00000000-0000-1000-8001-BBBD00000112");
+public static string COLOR_Q = "Color-Q-2";
 ```
-IBLEColorQ                      - ColorQ BLE interface
-AndroidBLEColorQ                - Android implementation
-ColorQTestIdCharacteristic      - Test ID
-ColorQTestAvailCharacteristic   - Test availability
-ColorQTestValuePrecisionCharacteristic - Value precision
+
+### Source Files
+
+Decompiled source code location:
 ```
-
-### Notes
-
-- UUIDs are constructed programmatically, not stored as string constants
-- The app uses Xamarin.Forms with native Android Bluetooth APIs
-- Full decompilation requires `ilspycmd` from .NET SDK
-- The `CLIENT_CHARACTERISTIC_CONFIG` descriptor UUID is used for notifications
+research/com.lamotte.WaterLinkSolutionsHome/out/
+├── decompiled_main/WaterLinkSolutionsHome.decompiled.cs (13 MB)
+├── decompiled_android/WaterLinkSolutionsHome.Android.decompiled.cs (4.7 MB)
+└── decompiled_testfactors/LaMotte.UniversalTestFactorCodes.decompiled.cs (1.7 KB)
+```
