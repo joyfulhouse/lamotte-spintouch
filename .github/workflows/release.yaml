@@ -16,19 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get release version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Create integration zip
         run: |
           cd custom_components
-          zip -r ../spintouch-${{ steps.version.outputs.version }}.zip spintouch/
+          zip -r ../spintouch.zip spintouch/
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: spintouch-${{ steps.version.outputs.version }}.zip
+          files: spintouch.zip
 
       - name: Generate release notes summary
         run: |
@@ -42,6 +38,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Manual Installation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download \`spintouch-${{ steps.version.outputs.version }}.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download \`spintouch.zip\` from this release" >> $GITHUB_STEP_SUMMARY
           echo "2. Extract to your \`custom_components/\` directory" >> $GITHUB_STEP_SUMMARY
           echo "3. Restart Home Assistant" >> $GITHUB_STEP_SUMMARY
