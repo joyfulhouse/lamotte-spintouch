@@ -1,6 +1,7 @@
 # SpinTouch BLE GATT Profile
 
 Discovered via nRF Connect on 2025-11-28, updated 2025-11-29.
+APK reverse engineering added 2025-11-29.
 
 ## Device Information
 
@@ -355,3 +356,123 @@ Key points:
 2. Read characteristic `00000000-0000-1000-8000-bbbd00000010` for test results
 3. Enable notifications on `00000000-0000-1000-8000-bbbd00000011` for status
 4. Parse the 6-byte entries by scanning param_ids to extract float values
+
+---
+
+## APK Reverse Engineering
+
+The WaterLink Solutions Home Android app (`com.lamotte.WaterLinkSolutionsHome`) was decompiled to understand the BLE protocol.
+
+### Extracted Assemblies
+
+Using `pyxamstore` to extract from `assemblies.blob`:
+
+| Assembly | Size | Purpose |
+|----------|------|---------|
+| `WaterLinkSolutionsHome.dll` | 8.6 MB | Main app logic, UI |
+| `WaterLinkSolutionsHome.Android.dll` | 1.2 MB | Android-specific code, BLE |
+| `LaMotte.TreatmentEngine.dll` | 54 KB | Chemical dosage calculations |
+| `LaMotte.UniversalTestFactorCodes.dll` | 6.1 KB | Test parameter definitions |
+
+### BLE Implementation Classes
+
+From `WaterLinkSolutionsHome.Android.dll`:
+
+```
+AndroidBLESpinTouch                    - Main BLE handler class
+IBLESpinTouch                          - Interface for SpinTouch BLE
+LEGattConnectionCallback               - GATT callback handler
+  ├── OnServicesDiscovered             - Called when services found
+  ├── OnCharacteristicChanged          - Called on notifications
+  └── OnCharacteristicRead             - Called on read responses
+```
+
+### Characteristic Property Names
+
+| App Property Name | Our UUID | Purpose |
+|-------------------|----------|---------|
+| `SpinTTestCharacteristic` | `0x...10` | Main test results data |
+| `SpinTestAvailCharacterisitic` | `0x...11` | Test availability/status |
+| `SpinSendTestCharacterisitic` | `0x...20` | Send test command |
+| `SpinTestAckCharacteristic` | `0x...21` | Test acknowledgment |
+
+### BLE Service Constants
+
+Found in the Android DLL:
+
+```
+SPIN_TOUCH_SERVICE      - Main SpinTouch BLE service UUID
+SPIN_TOUCH_TTEST        - Test data characteristic
+SPIN_TOUCH_TESTAVAIL    - Test availability characteristic
+SPIN_TOUCH_TESTACK      - Test acknowledgment characteristic
+SPIN_TOUCH_SENDTEST     - Send test command characteristic
+CQ_SERVICE              - ColorQ service (different device)
+```
+
+### Universal Test Factor Codes
+
+From `LaMotte.UniversalTestFactorCodes.dll` - all supported chemical parameters across LaMotte devices:
+
+```
+Water Quality:
+  FREEAMMONIA, CHLORIDE, CHLORINEDIOX, HARDCA, IODINE, NITRATE, NITRITE,
+  OXIDIZER, OXYGEN, PEROXIDE, PHOSPHATE, PHOSPHORUS, SATINDEX, SILICA,
+  SULFATE, SULFIDE, SURFACTANTS, TANNIN, TURBIDITY
+
+Metals:
+  ALUMINUM, BARIUM, CADMIUM, CALCIUMIONS, CHROMIUM, COBALT, COPPER,
+  FERRICIRON, FERRUSIRON, MAGNESIUM, MAGNESIUMIONS, MERCURY, MOLYBDENUM,
+  NICKEL, POTASSIUM
+
+Pool/Spa Specific:
+  BIGSHOCK, BIGUANIDE, BORATE
+
+Industrial:
+  BENZOTRIAZOLE, CARBOHYDRAZIDE, ERYTHORBICACID, FLOURIDE, HYDRAZINE,
+  HYDROQUINONE, KETOXIME, PHENOL
+
+Environmental:
+  AIRTEMP, TEMPERATURE, CYANIDE
+```
+
+### Key Data Classes
+
+```
+SpinTouchTestData       - Model for test results
+SpinTouchService        - Service wrapper
+TestResult              - Individual test result
+TestFactor              - Chemical parameter definition
+ConvertBytesToString    - Data conversion utility
+```
+
+### Treatment Engine
+
+The `LaMotte.TreatmentEngine.dll` contains chemical dosage calculation logic:
+
+- `MainCalc` - Main calculation entry point
+- `GetCyaBufferContrib` - CYA buffer contribution
+- `GetBorBufferContrib` - Borate buffer contribution
+- `GetWaterBufferContrib` - Water buffer contribution
+- `GetAmountOfLiquidProductToAdd` - Liquid chemical dosage
+- `GetAmountOfDryProductToAdd` - Dry chemical dosage
+- `IsRuleValid` - Treatment rule validation
+- `GenerateRecommendations` - Treatment recommendations
+
+### ColorQ Support
+
+The app also supports LaMotte ColorQ devices:
+
+```
+IBLEColorQ                      - ColorQ BLE interface
+AndroidBLEColorQ                - Android implementation
+ColorQTestIdCharacteristic      - Test ID
+ColorQTestAvailCharacteristic   - Test availability
+ColorQTestValuePrecisionCharacteristic - Value precision
+```
+
+### Notes
+
+- UUIDs are constructed programmatically, not stored as string constants
+- The app uses Xamarin.Forms with native Android Bluetooth APIs
+- Full decompilation requires `ilspycmd` from .NET SDK
+- The `CLIENT_CHARACTERISTIC_CONFIG` descriptor UUID is used for notifications
