@@ -125,8 +125,9 @@ def _get_disabled_sensors(disk_series: str) -> set[str]:
         return {"phosphate", "bromine"}
     if disk_series in ("203", "204"):
         return {"borate", "bromine"}
-    # Unknown disk - disable exclusive sensors
-    return {"bromine"}
+    # Auto or unknown - disable all exclusive sensors until we know
+    # Users can manually enable if needed
+    return {"phosphate", "borate", "bromine"}
 
 
 class SpinTouchSensor(
