@@ -4,14 +4,20 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
-  "documentation": "https://github.com/your-repo/spintouch",
+  "documentation": "https://github.com/joyfulhouse/lamotte-spintouch",
   "integration_type": "device",
   "iot_class": "local_push",
   "bluetooth": [
     {
       "service_uuid": "00000000-0000-1000-8000-bbbd00000000"
+    },
+    {
+      "local_name": "SpinTouch*"
+    },
+    {
+      "local_name": "WaterLink*"
     }
   ],
   "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=3.1.0"],
-  "version": "1.0.0"
+  "version": "0.1.3"
 }

@@ -24,7 +24,11 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.B
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SpinTouch from a config entry."""
-    address: str = entry.data[CONF_ADDRESS]
+    # Handle both old and new config entry formats
+    address: str = entry.data.get(CONF_ADDRESS) or entry.unique_id or ""
+    if not address:
+        _LOGGER.error("No address found in config entry data or unique_id")
+        return False
 
     _LOGGER.info("Setting up SpinTouch at %s", address)
 

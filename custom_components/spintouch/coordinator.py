@@ -6,7 +6,6 @@ import asyncio
 import logging
 import math
 import struct
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from bleak import BleakClient
@@ -15,6 +14,12 @@ from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 from .const import (
     DATA_CHARACTERISTIC_UUID,
@@ -96,7 +101,7 @@ class SpinTouchData:
         if fc is not None and cya is not None and cya > 0:
             self.values["fc_cya_ratio"] = round((fc / cya) * 100, 1)
 
-        self.last_reading_time = datetime.now()
+        self.last_reading_time = dt_util.utcnow()
         return True
 
 
@@ -195,16 +200,18 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                 self._data.connected = True
                 self._data.connection_enabled = True
                 _LOGGER.info("Connected to SpinTouch at %s - waiting for test data", self.address)
-                self.async_update_listeners()
+                self.async_set_updated_data(self._data)
                 return True
 
             except BleakError as err:
                 _LOGGER.error("Failed to connect to %s: %s", self.address, err)
                 self._data.connected = False
+                self.async_set_updated_data(self._data)
                 return False
             except Exception as err:
                 _LOGGER.exception("Unexpected error connecting to %s: %s", self.address, err)
                 self._data.connected = False
+                self.async_set_updated_data(self._data)
                 return False
 
     async def async_disconnect(self) -> None:
@@ -221,7 +228,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
         self._client = None
         self._data.connected = False
-        self.async_update_listeners()
+        self.async_set_updated_data(self._data)
 
     async def async_force_reconnect(self) -> None:
         """Force reconnection - cancels reconnect delay and connects immediately."""
@@ -230,7 +237,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self._stay_disconnected = False
         self._reading_received = False
         self._data.connection_enabled = True
-        self.async_update_listeners()
+        self.async_set_updated_data(self._data)
         await self.async_connect()
 
     @callback  # type: ignore[misc]
@@ -243,7 +250,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         )
         self._client = None
         self._data.connected = False
-        self.async_update_listeners()
+        self.async_set_updated_data(self._data)
 
         # If unexpected disconnect and not in stay_disconnected period, try to reconnect
         if not self._expected_disconnect and not self._stay_disconnected:
@@ -308,7 +315,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
                 )
                 self._stay_disconnected = True
                 self._data.connection_enabled = False
-                self.async_update_listeners()
+                self.async_set_updated_data(self._data)
                 self.hass.async_create_task(self._async_disconnect_and_schedule_reconnect())
 
         self._disconnect_timer = self.hass.loop.call_later(DISCONNECT_DELAY, _disconnect_callback)
@@ -332,7 +339,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             self._stay_disconnected = False
             self._reading_received = False
             self._data.connection_enabled = True
-            self.async_update_listeners()
+            self.async_set_updated_data(self._data)
             # Will reconnect when next Bluetooth advertisement is seen
 
         self._reconnect_timer = self.hass.loop.call_later(RECONNECT_DELAY, _reconnect_callback)
