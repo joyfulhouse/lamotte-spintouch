@@ -37,11 +37,12 @@ from .const import (
     STATUS_CHARACTERISTIC_UUID,
     TIMESTAMP_OFFSET,
     TIMESTAMP_SIZE,
-    UNEXPECTED_RECONNECT_DELAY,
+    VISIBILITY_CHECK_INTERVAL,
 )
 from .util import TimerManager
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
     from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -51,7 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 # Timer names for the coordinator
 TIMER_DISCONNECT = "disconnect"
 TIMER_RECONNECT = "reconnect"
-TIMER_UNEXPECTED_RECONNECT = "unexpected_reconnect"
+TIMER_VISIBILITY_CHECK = "visibility_check"
 
 
 class SpinTouchData:
@@ -412,6 +413,7 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
 
                 self._data.connected = True
                 self._data.connection_enabled = True
+                self._stop_visibility_checks()  # Stop checking now that we're connected
                 _LOGGER.info("Connected to SpinTouch at %s - waiting for test data", self.address)
                 self.async_set_updated_data(self._data)
                 return True
@@ -466,8 +468,8 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
         self.async_set_updated_data(self._data)
 
         if not self._expected_disconnect and not self._stay_disconnected:
-            _LOGGER.info("Unexpected disconnect - scheduling reconnect attempt")
-            self._schedule_unexpected_reconnect()
+            _LOGGER.info("Unexpected disconnect - starting visibility checks")
+            self._start_visibility_checks()
 
     def _on_status_notification(self, _sender: int, _data: bytearray) -> None:
         """Handle status notification from SpinTouch."""
@@ -561,30 +563,52 @@ class SpinTouchCoordinator(DataUpdateCoordinator[SpinTouchData]):  # type: ignor
             RECONNECT_DELAY,
         )
 
-    def _schedule_unexpected_reconnect(self) -> None:
-        """Schedule reconnection after unexpected disconnect.
+    def _start_visibility_checks(self) -> None:
+        """Start periodic checks for device visibility.
 
-        Unlike the normal reconnect delay (5 min for phone app access),
-        this uses a short delay to quickly restore connection after
-        unexpected BLE disconnects (interference, distance, etc.).
+        When disconnected unexpectedly (device powered off), we periodically
+        check if the device becomes visible again via Bluetooth. This handles
+        cases where BLE advertisement callbacks aren't reliably delivered.
         """
 
-        def _unexpected_reconnect_callback() -> None:
-            _LOGGER.info(
-                "Attempting reconnect after unexpected disconnect (delay: %ds)",
-                UNEXPECTED_RECONNECT_DELAY,
+        def _visibility_check_callback() -> None:
+            # Check if device is now visible
+            device = bluetooth.async_ble_device_from_address(
+                self.hass, self.address, connectable=True
             )
-            self.hass.async_create_task(self.async_connect())
+            if device:
+                _LOGGER.info(
+                    "Device %s now visible, attempting connection",
+                    self.address,
+                )
+                self.hass.async_create_task(self.async_connect())
+            else:
+                # Device not visible, schedule another check
+                _LOGGER.debug(
+                    "Device %s not visible, checking again in %ds",
+                    self.address,
+                    VISIBILITY_CHECK_INTERVAL,
+                )
+                self._schedule_visibility_check()
+
+        self._schedule_visibility_check(_visibility_check_callback)
+
+    def _schedule_visibility_check(self, callback_fn: Callable[[], None] | None = None) -> None:
+        """Schedule a single visibility check."""
+        if callback_fn is None:
+            # Re-use the start method to get the callback
+            self._start_visibility_checks()
+            return
 
         self._timers.schedule(
-            TIMER_UNEXPECTED_RECONNECT,
-            UNEXPECTED_RECONNECT_DELAY,
-            _unexpected_reconnect_callback,
+            TIMER_VISIBILITY_CHECK,
+            VISIBILITY_CHECK_INTERVAL,
+            callback_fn,
         )
-        _LOGGER.debug(
-            "Unexpected reconnect scheduled in %ds",
-            UNEXPECTED_RECONNECT_DELAY,
-        )
+
+    def _stop_visibility_checks(self) -> None:
+        """Stop periodic visibility checks."""
+        self._timers.cancel(TIMER_VISIBILITY_CHECK)
 
     @callback  # type: ignore[misc]
     def async_handle_bluetooth_event(
