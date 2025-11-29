@@ -51,6 +51,36 @@ class SpinTouchData:
         self.report_time: datetime | None = None  # Timestamp from SpinTouch report
         self.connected: bool = False
         self.connection_enabled: bool = True
+        self.detected_param_ids: set[int] = set()  # Track which param_ids are present
+
+    @property
+    def detected_disk_series(self) -> str | None:
+        """Auto-detect disk series based on which param_ids are present.
+
+        Detection logic:
+        - 0x03 (Bromine) present → Disk 203
+        - 0x01/0x02 (Chlorine) present, no 0x0E → Disk 303 or 304
+        - 0x0E present, no chlorine/bromine → Disk 204
+        """
+        if not self.detected_param_ids:
+            return None
+
+        has_chlorine = 0x01 in self.detected_param_ids or 0x02 in self.detected_param_ids
+        has_bromine = 0x03 in self.detected_param_ids
+        has_borate_0e = 0x0E in self.detected_param_ids
+
+        if has_bromine:
+            return "203"  # Bromine disk
+        if has_chlorine and not has_borate_0e:
+            return "303"  # Chlorine disk (303 or 304, default to 303)
+        if has_borate_0e and not has_chlorine and not has_bromine:
+            return "204"  # Chlorine-free disk
+
+        # Default to 303 if we have chlorine
+        if has_chlorine:
+            return "303"
+
+        return None
 
     def update_from_bytes(self, data: bytes) -> bool:
         """Parse BLE data and update values.
@@ -91,6 +121,9 @@ class SpinTouchData:
 
             # Look up sensor definition for this param_id
             sensor = PARAM_ID_TO_SENSOR.get(param_id)
+
+            # Track all param_ids we see for disk detection
+            self.detected_param_ids.add(param_id)
 
             if sensor:
                 try:
@@ -140,6 +173,10 @@ class SpinTouchData:
             entries_parsed += 1
 
         _LOGGER.debug("Parsed %d parameter entries", entries_parsed)
+
+        # Log detected disk series
+        if self.detected_disk_series:
+            _LOGGER.info("Auto-detected disk series: %s", self.detected_disk_series)
 
         # Calculate derived values
         fc = self.values.get("free_chlorine")

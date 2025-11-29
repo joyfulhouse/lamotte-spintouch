@@ -13,12 +13,13 @@ CONF_DISK_SERIES = "disk_series"
 # Supported disk series and their param 0x0D chemical
 # 0x0D is overloaded - means Phosphate on some disks, Borate on others
 DISK_SERIES_OPTIONS = {
+    "auto": "Auto-detect",
     "203": "Phosphate",
     "204": "Borate",
     "303": "Borate",
     "304": "Borate",
 }
-DEFAULT_DISK_SERIES = "303"
+DEFAULT_DISK_SERIES = "auto"
 
 # BLE UUIDs
 SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"

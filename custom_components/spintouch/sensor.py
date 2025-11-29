@@ -58,17 +58,43 @@ async def async_setup_entry(
     """Set up SpinTouch sensors from a config entry."""
     coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Get disk series from config (default to 303)
-    disk_series = entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
+    # Get disk series from config (default to "auto" for auto-detection)
+    configured_disk_series = entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
+
+    # Use auto-detected disk series if available, otherwise fall back to configured
+    disk_series = (
+        coordinator.data.detected_disk_series
+        if coordinator.data and coordinator.data.detected_disk_series
+        else configured_disk_series
+    )
+
+    # Define which sensors to skip based on disk series
+    # - 303/304: use param_0d (Borate), skip borate (0x0E doesn't exist)
+    # - 203: use both param_0d (Phosphate) and borate (0x0E)
+    # - 204: skip param_0d, use borate (0x0E)
+    # - auto: create all sensors, availability will be determined by data
+    skip_sensors: set[str] = set()
+    if disk_series in ("303", "304"):
+        skip_sensors.add("borate")  # 0x0E doesn't exist on these disks
+    elif disk_series == "204":
+        skip_sensors.add("param_0d")  # 0x0D doesn't exist on this disk
+    # For "auto" or "203", create all sensors
 
     entities: list[SensorEntity] = []
 
     # Primary sensors from BLE data
     for sensor_def in SENSORS:
+        # Skip sensors not applicable to this disk series
+        if sensor_def.key in skip_sensors:
+            continue
+
         # Override name for param_0d based on disk series
         name = sensor_def.name
         if sensor_def.key == "param_0d":
-            name = DISK_SERIES_OPTIONS.get(disk_series, "Borate")
+            if disk_series == "auto":
+                name = "Phosphate/Borate"  # Generic name until detected
+            else:
+                name = DISK_SERIES_OPTIONS.get(disk_series, "Borate")
 
         entities.append(
             SpinTouchSensor(
