@@ -18,8 +18,8 @@ jobs:
 
       - name: Create integration zip
         run: |
-          cd custom_components
-          zip -r ../spintouch.zip spintouch/ -x "*/__pycache__/*"
+          cd custom_components/spintouch
+          zip -r ../../spintouch.zip . -x "*/__pycache__/*"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
