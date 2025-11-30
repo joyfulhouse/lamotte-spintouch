@@ -19,6 +19,6 @@
   "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/joyfulhouse/lamotte-spintouch/issues",
-  "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=3.1.0"],
-  "version": "0.1.0"
+  "requirements": ["bleak>=1.0.0", "bleak-retry-connector>=4.4.0"],
+  "version": "0.1.2"
 }

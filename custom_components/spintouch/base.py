@@ -53,22 +53,3 @@ class SpinTouchEntity:
             manufacturer=MANUFACTURER,
             model=MODEL,
         )
-
-
-def get_device_info(coordinator: SpinTouchCoordinator) -> DeviceInfo:
-    """Get DeviceInfo for a SpinTouch device.
-
-    Utility function for entities that don't use the mixin pattern.
-
-    Args:
-        coordinator: The SpinTouch coordinator instance.
-
-    Returns:
-        DeviceInfo dict for Home Assistant device registry.
-    """
-    return DeviceInfo(
-        identifiers={(DOMAIN, coordinator.address)},
-        name=coordinator.device_name,
-        manufacturer=MANUFACTURER,
-        model=MODEL,
-    )

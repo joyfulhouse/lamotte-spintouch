@@ -226,5 +226,5 @@ rules:
     comment: BLE integration does not make HTTP requests.
 
   strict-typing:
-    status: todo
-    comment: Need to add py.typed marker and ensure full type coverage.
+    status: done
+    comment: py.typed marker present, mypy strict mode passes with no errors.

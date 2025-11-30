@@ -26,6 +26,17 @@ DISK_SERIES_OPTIONS = {
 }
 DEFAULT_DISK_SERIES = "auto"
 
+
+def get_disk_series_display_options() -> dict[str, str]:
+    """Get disk series options formatted for display in config flow.
+
+    Returns a dictionary mapping series codes to human-readable labels.
+    """
+    return {
+        series: f"Disk {series} ({chemical})" for series, chemical in DISK_SERIES_OPTIONS.items()
+    }
+
+
 # BLE UUIDs (from Constants class in decompiled app)
 SERVICE_UUID = "00000000-0000-1000-8000-bbbd00000000"  # SPIN_TOUCH_SERVICE
 DATA_CHARACTERISTIC_UUID = "00000000-0000-1000-8000-bbbd00000010"  # SPIN_TOUCH_TTEST

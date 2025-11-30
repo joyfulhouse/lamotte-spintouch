@@ -208,6 +208,7 @@ class SpinTouchReportTimeSensor(
 
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:clipboard-clock-outline"
 
     def __init__(
@@ -268,14 +269,20 @@ class SpinTouchWaterQualitySensor(
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._setup_spintouch_device(coordinator, entry, "water_quality", "Water Quality")
+        self._cached_issues: dict[str, dict[str, Any]] | None = None
+        self._last_data_hash: int | None = None
 
     def _get_issues(self) -> dict[str, dict[str, Any]]:
-        """Get all parameters that are out of range."""
-        issues: dict[str, dict[str, Any]] = {}
-
+        """Get all parameters that are out of range with caching."""
         if not self.coordinator.data or not self.coordinator.data.values:
-            return issues
+            return {}
 
+        # Cache issues to avoid recalculating for icon/attributes
+        current_hash = hash(frozenset(self.coordinator.data.values.items()))
+        if self._cached_issues is not None and self._last_data_hash == current_hash:
+            return self._cached_issues
+
+        issues: dict[str, dict[str, Any]] = {}
         for key, (min_val, max_val) in self.RANGES.items():
             value = self.coordinator.data.values.get(key)
             if value is not None:
@@ -294,6 +301,8 @@ class SpinTouchWaterQualitySensor(
                         "max": max_val,
                     }
 
+        self._cached_issues = issues
+        self._last_data_hash = current_hash
         return issues
 
     @property
