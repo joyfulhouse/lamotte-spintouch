@@ -71,9 +71,24 @@
 ## Requirements
 
 - Home Assistant 2024.1.0 or newer
-- ESPHome Bluetooth Proxy **or** built-in Bluetooth adapter
+- [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy/) **or** built-in Bluetooth adapter
 - LaMotte WaterLink Spin Touch device
 - SpinDisk reagent cartridge (Series 203, 204, 303, 304, or 402)
+
+### Setting Up a Bluetooth Proxy
+
+If you don't have a Bluetooth Proxy yet, you can create one with any ESP32 device. Add this to your ESPHome configuration:
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+bluetooth_proxy:
+  active: true
+```
+
+See the [ESPHome Bluetooth Proxy documentation](https://esphome.io/components/bluetooth_proxy/) for complete setup instructions.
 
 ## Installation
 
@@ -229,12 +244,14 @@ logger:
 
 ## Advanced: ESPHome Direct
 
-For dedicated ESP32 integration without Home Assistant, see `esphome/spintouch.yaml`.
+For dedicated ESP32 integration without Home Assistant, see the [ESPHome directory](esphome/README.md).
 
 Use ESPHome Direct when:
 - No existing Bluetooth proxies
 - Want local-only processing
-- Need standalone operation
+- Need standalone operation with built-in web UI
+
+For most users, the custom integration with [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy/) is the recommended approach.
 
 ## Advanced: LSI Calculation
 
