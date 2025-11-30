@@ -1,0 +1,246 @@
+# Pool Chemistry Alert Automations
+#
+# These automations monitor SpinTouch readings and send alerts when
+# chemistry values fall outside recommended ranges.
+#
+# Recommended Pool Chemistry Ranges:
+# - pH: 7.2 - 7.8 (ideal: 7.4 - 7.6)
+# - Free Chlorine: 1.0 - 3.0 ppm (with CYA, adjust per FC/CYA ratio)
+# - Total Alkalinity: 80 - 120 ppm
+# - Calcium Hardness: 200 - 400 ppm
+# - Cyanuric Acid: 30 - 50 ppm (outdoor pools)
+# - Salt (salt pools): 2700 - 3400 ppm
+# - Phosphate: < 500 ppb
+# - Iron: < 0.3 ppm
+
+# Alert on low chlorine
+- id: spintouch_alert_low_chlorine
+  alias: "Pool Alert: Low Chlorine"
+  description: "Alert when free chlorine drops below safe levels"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_free_chlorine
+      below: 1.0
+      for:
+        minutes: 1
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.spintouch_free_chlorine
+      above: 0  # Ignore zero/invalid readings
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Low Pool Chlorine"
+        message: >-
+          Free chlorine is {{ states('sensor.spintouch_free_chlorine') }} ppm.
+          Recommended range: 1.0 - 3.0 ppm.
+          Consider adding chlorine.
+        notification_id: pool_low_chlorine
+
+
+# Alert on high chlorine
+- id: spintouch_alert_high_chlorine
+  alias: "Pool Alert: High Chlorine"
+  description: "Alert when chlorine is too high for safe swimming"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_free_chlorine
+      above: 5.0
+      for:
+        minutes: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ High Pool Chlorine"
+        message: >-
+          Free chlorine is {{ states('sensor.spintouch_free_chlorine') }} ppm.
+          Swimming not recommended above 5.0 ppm.
+          Allow chlorine to dissipate before swimming.
+        notification_id: pool_high_chlorine
+
+
+# Alert on pH out of range
+- id: spintouch_alert_ph_out_of_range
+  alias: "Pool Alert: pH Out of Range"
+  description: "Alert when pH is outside safe swimming range"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_ph
+      below: 7.2
+      for:
+        minutes: 1
+    - platform: numeric_state
+      entity_id: sensor.spintouch_ph
+      above: 7.8
+      for:
+        minutes: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Pool pH Out of Range"
+        message: >-
+          pH is {{ states('sensor.spintouch_ph') }}.
+          Recommended range: 7.2 - 7.8.
+          {% if states('sensor.spintouch_ph') | float < 7.2 %}
+          pH is low - add soda ash or sodium carbonate.
+          {% else %}
+          pH is high - add muriatic acid or dry acid.
+          {% endif %}
+        notification_id: pool_ph_alert
+
+
+# Alert on low FC/CYA ratio (indicates chlorine is ineffective)
+- id: spintouch_alert_low_fc_cya_ratio
+  alias: "Pool Alert: Low FC/CYA Ratio"
+  description: "Alert when chlorine effectiveness is compromised by high CYA"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_fc_cya_ratio
+      below: 5
+      for:
+        minutes: 1
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.spintouch_cyanuric_acid
+      above: 30  # Only alert if CYA is present
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Low Chlorine Effectiveness"
+        message: >-
+          FC/CYA ratio is {{ states('sensor.spintouch_fc_cya_ratio') }}%.
+          Minimum recommended: 7.5% for adequate sanitation.
+
+          Current levels:
+          - Free Chlorine: {{ states('sensor.spintouch_free_chlorine') }} ppm
+          - Cyanuric Acid: {{ states('sensor.spintouch_cyanuric_acid') }} ppm
+
+          Options:
+          1. Increase chlorine to maintain ratio
+          2. Dilute pool water to reduce CYA
+        notification_id: pool_fc_cya_ratio
+
+
+# Alert on high calcium hardness (scale risk)
+- id: spintouch_alert_high_calcium
+  alias: "Pool Alert: High Calcium Hardness"
+  description: "Alert when calcium levels risk scale formation"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_calcium
+      above: 400
+      for:
+        minutes: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ High Calcium Hardness"
+        message: >-
+          Calcium hardness is {{ states('sensor.spintouch_calcium') }} ppm.
+          Recommended range: 200 - 400 ppm.
+          High calcium can cause scale buildup on equipment.
+          Consider partial drain and refill.
+        notification_id: pool_high_calcium
+
+
+# Alert on high phosphate (algae food source)
+- id: spintouch_alert_high_phosphate
+  alias: "Pool Alert: High Phosphate"
+  description: "Alert when phosphate levels promote algae growth"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_phosphate
+      above: 500
+      for:
+        minutes: 1
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ High Phosphate Levels"
+        message: >-
+          Phosphate is {{ states('sensor.spintouch_phosphate') }} ppb.
+          Recommended: Below 500 ppb.
+          High phosphate promotes algae growth.
+          Consider using a phosphate remover.
+        notification_id: pool_high_phosphate
+
+
+# Alert on salt level for salt water pools
+- id: spintouch_alert_salt_out_of_range
+  alias: "Pool Alert: Salt Level Out of Range"
+  description: "Alert when salt level is outside optimal range for chlorine generation"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.spintouch_salt
+      below: 2700
+      for:
+        minutes: 1
+    - platform: numeric_state
+      entity_id: sensor.spintouch_salt
+      above: 3400
+      for:
+        minutes: 1
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.spintouch_salt
+      above: 100  # Only alert for salt water pools
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "⚠️ Salt Level Out of Range"
+        message: >-
+          Salt level is {{ states('sensor.spintouch_salt') }} ppm.
+          Recommended range: 2700 - 3400 ppm.
+          {% if states('sensor.spintouch_salt') | float < 2700 %}
+          Add pool salt to improve chlorine generation.
+          {% else %}
+          Salt is high - dilute by adding fresh water.
+          {% endif %}
+        notification_id: pool_salt_alert
+
+
+# Weekly chemistry summary
+- id: spintouch_weekly_summary
+  alias: "Pool: Weekly Chemistry Summary"
+  description: "Send a weekly summary of pool chemistry readings"
+  mode: single
+  trigger:
+    - platform: time
+      at: "09:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - sun
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "📊 Weekly Pool Chemistry Summary"
+        message: >-
+          Last SpinTouch readings:
+
+          **Sanitizer**
+          - Free Chlorine: {{ states('sensor.spintouch_free_chlorine') }} ppm
+          - Total Chlorine: {{ states('sensor.spintouch_total_chlorine') }} ppm
+          - Combined Chlorine: {{ states('sensor.spintouch_combined_chlorine') }} ppm
+          - FC/CYA Ratio: {{ states('sensor.spintouch_fc_cya_ratio') }}%
+
+          **Balance**
+          - pH: {{ states('sensor.spintouch_ph') }}
+          - Alkalinity: {{ states('sensor.spintouch_alkalinity') }} ppm
+          - Calcium Hardness: {{ states('sensor.spintouch_calcium') }} ppm
+          - Cyanuric Acid: {{ states('sensor.spintouch_cyanuric_acid') }} ppm
+
+          **Other**
+          - Salt: {{ states('sensor.spintouch_salt') }} ppm
+          - Phosphate: {{ states('sensor.spintouch_phosphate') }} ppb
+          - Iron: {{ states('sensor.spintouch_iron') }} ppm
+
+          Last test: {{ states.sensor.spintouch_free_chlorine.last_updated.strftime('%Y-%m-%d %H:%M') if states.sensor.spintouch_free_chlorine.last_updated else 'Unknown' }}
+        notification_id: pool_weekly_summary

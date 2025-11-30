@@ -38,6 +38,7 @@ from .const import (
     TIMESTAMP_OFFSET,
     TIMESTAMP_SIZE,
     VISIBILITY_CHECK_INTERVAL,
+    SensorDefinition,
 )
 from .util import TimerManager
 
@@ -203,12 +204,12 @@ class SpinTouchData:
         except struct.error as err:
             _LOGGER.error("Failed to parse TestType 0x%02X: %s", test_type, err)
 
-    def _is_valid_value(self, value: float, sensor: object) -> bool:
+    def _is_valid_value(self, value: float, sensor: SensorDefinition) -> bool:
         """Check if a sensor value is valid."""
         return (
             value is not None
             and not math.isnan(value)
-            and sensor.min_valid <= value <= sensor.max_valid  # type: ignore[attr-defined]
+            and sensor.min_valid <= value <= sensor.max_valid
         )
 
     def _log_disk_info(self) -> None:

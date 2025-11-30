@@ -9,8 +9,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from .const import DOMAIN
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
-
+    from . import SpinTouchConfigEntry
     from .coordinator import SpinTouchCoordinator
 
 # Device info constants
@@ -34,7 +33,7 @@ class SpinTouchEntity:
     def _setup_spintouch_device(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
         key: str,
         name: str,
     ) -> None:
@@ -54,22 +53,3 @@ class SpinTouchEntity:
             manufacturer=MANUFACTURER,
             model=MODEL,
         )
-
-
-def get_device_info(coordinator: SpinTouchCoordinator) -> DeviceInfo:
-    """Get DeviceInfo for a SpinTouch device.
-
-    Utility function for entities that don't use the mixin pattern.
-
-    Args:
-        coordinator: The SpinTouch coordinator instance.
-
-    Returns:
-        DeviceInfo dict for Home Assistant device registry.
-    """
-    return DeviceInfo(
-        identifiers={(DOMAIN, coordinator.address)},
-        name=coordinator.device_name,
-        manufacturer=MANUFACTURER,
-        model=MODEL,
-    )

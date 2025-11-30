@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Selecione um dispositivo SpinTouch descoberto ou insira o endereço Bluetooth manualmente.",
+        "data": {
+          "address": "Endereço Bluetooth",
+          "disk_series": "Série do disco"
+        },
+        "data_description": {
+          "address": "O endereço MAC Bluetooth do seu dispositivo SpinTouch",
+          "disk_series": "A série SpinDisk que você usa (A detecção automática funciona para a maioria dos usuários)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Confirmar SpinTouch",
+        "description": "Deseja configurar {name} ({address})?",
+        "data": {
+          "disk_series": "Série do disco"
+        },
+        "data_description": {
+          "disk_series": "A série SpinDisk que você usa (A detecção automática funciona para a maioria dos usuários)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar SpinTouch",
+        "description": "Atualizar a configuração para {name}.",
+        "data": {
+          "disk_series": "Série do disco"
+        },
+        "data_description": {
+          "disk_series": "A série SpinDisk que você usa (A detecção automática funciona para a maioria dos usuários)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "O dispositivo já está configurado",
+      "no_device": "Nenhum dispositivo encontrado",
+      "reconfigure_successful": "Configuração atualizada com sucesso"
+    },
+    "error": {
+      "cannot_connect": "Falha ao conectar ao dispositivo"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções do SpinTouch",
+        "data": {
+          "disk_series": "Série do disco"
+        },
+        "data_description": {
+          "disk_series": "A série SpinDisk que você usa (A detecção automática funciona para a maioria dos usuários)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Falha ao conectar ao dispositivo SpinTouch em {address}. Certifique-se de que o dispositivo está ligado e dentro do alcance do Bluetooth."
+    },
+    "communication_error": {
+      "message": "Erro de comunicação com o dispositivo SpinTouch: {error}"
+    },
+    "data_parse_error": {
+      "message": "Falha ao analisar dados do dispositivo SpinTouch. O dispositivo pode precisar ser testado novamente."
+    },
+    "device_unavailable": {
+      "message": "O dispositivo SpinTouch em {address} não está disponível. Verifique se está ligado e dentro do alcance do Bluetooth."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Cloro livre"
+      },
+      "total_chlorine": {
+        "name": "Cloro total"
+      },
+      "bromine": {
+        "name": "Bromo"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Alcalinidade total"
+      },
+      "calcium": {
+        "name": "Dureza de cálcio"
+      },
+      "cyanuric_acid": {
+        "name": "Ácido cianúrico"
+      },
+      "salt": {
+        "name": "Sal"
+      },
+      "copper": {
+        "name": "Cobre"
+      },
+      "iron": {
+        "name": "Ferro"
+      },
+      "phosphate": {
+        "name": "Fosfato"
+      },
+      "borate": {
+        "name": "Borato"
+      },
+      "combined_chlorine": {
+        "name": "Cloro combinado"
+      },
+      "fc_cya_ratio": {
+        "name": "Relação CL/ACY"
+      },
+      "last_reading": {
+        "name": "Última leitura"
+      },
+      "report_time": {
+        "name": "Hora do relatório"
+      },
+      "water_quality": {
+        "name": "Qualidade da água"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Conectado"
+      },
+      "connection_enabled": {
+        "name": "Conexão habilitada"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Forçar reconexão"
+      }
+    }
+  }
+}

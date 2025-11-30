@@ -10,7 +10,6 @@ from homeassistant.components.bluetooth import BluetoothScanningMode
 from homeassistant.components.bluetooth.match import ADDRESS, BluetoothCallbackMatcher
 from homeassistant.const import CONF_ADDRESS, Platform
 
-from .const import DOMAIN
 from .coordinator import SpinTouchCoordinator
 
 if TYPE_CHECKING:
@@ -21,8 +20,11 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
 
+# Type alias for config entry with runtime data
+type SpinTouchConfigEntry = ConfigEntry[SpinTouchCoordinator]
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+
+async def async_setup_entry(hass: HomeAssistant, entry: SpinTouchConfigEntry) -> bool:
     """Set up SpinTouch from a config entry."""
     # Handle both old and new config entry formats
     address: str = entry.data.get(CONF_ADDRESS) or entry.unique_id or ""
@@ -67,9 +69,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
 
-    # Store coordinator
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    # Store coordinator in runtime_data (preferred over hass.data)
+    entry.runtime_data = coordinator
 
     # Initial connection attempt
     await coordinator.async_connect()
@@ -80,17 +81,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SpinTouchConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading SpinTouch entry %s", entry.entry_id)
 
     # Disconnect from device
-    coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
-    await coordinator.async_disconnect()
+    await entry.runtime_data.async_disconnect()
 
     # Unload platforms
     unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
     return unload_ok

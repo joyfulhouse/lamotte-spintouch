@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Välj en upptäckt SpinTouch-enhet eller ange Bluetooth-adressen manuellt.",
+        "data": {
+          "address": "Bluetooth-adress",
+          "disk_series": "Diskserie"
+        },
+        "data_description": {
+          "address": "Bluetooth MAC-adressen för din SpinTouch-enhet",
+          "disk_series": "SpinDisk-serien du använder (Automatisk identifiering fungerar för de flesta användare)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Bekräfta SpinTouch",
+        "description": "Vill du konfigurera {name} ({address})?",
+        "data": {
+          "disk_series": "Diskserie"
+        },
+        "data_description": {
+          "disk_series": "SpinDisk-serien du använder (Automatisk identifiering fungerar för de flesta användare)"
+        }
+      },
+      "reconfigure": {
+        "title": "Omkonfigurera SpinTouch",
+        "description": "Uppdatera konfigurationen för {name}.",
+        "data": {
+          "disk_series": "Diskserie"
+        },
+        "data_description": {
+          "disk_series": "SpinDisk-serien du använder (Automatisk identifiering fungerar för de flesta användare)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Enheten är redan konfigurerad",
+      "no_device": "Ingen enhet hittades",
+      "reconfigure_successful": "Konfigurationen uppdaterades"
+    },
+    "error": {
+      "cannot_connect": "Kunde inte ansluta till enheten"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch-alternativ",
+        "data": {
+          "disk_series": "Diskserie"
+        },
+        "data_description": {
+          "disk_series": "SpinDisk-serien du använder (Automatisk identifiering fungerar för de flesta användare)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Kunde inte ansluta till SpinTouch-enheten på {address}. Kontrollera att enheten är påslagen och inom Bluetooth-räckvidd."
+    },
+    "communication_error": {
+      "message": "Kommunikationsfel med SpinTouch-enheten: {error}"
+    },
+    "data_parse_error": {
+      "message": "Kunde inte tolka data från SpinTouch-enheten. Enheten kan behöva testas igen."
+    },
+    "device_unavailable": {
+      "message": "SpinTouch-enheten på {address} är inte tillgänglig. Kontrollera att den är påslagen och inom Bluetooth-räckvidd."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Fritt klor"
+      },
+      "total_chlorine": {
+        "name": "Totalt klor"
+      },
+      "bromine": {
+        "name": "Brom"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Total alkalinitet"
+      },
+      "calcium": {
+        "name": "Kalciumhårdhet"
+      },
+      "cyanuric_acid": {
+        "name": "Cyanursyra"
+      },
+      "salt": {
+        "name": "Salt"
+      },
+      "copper": {
+        "name": "Koppar"
+      },
+      "iron": {
+        "name": "Järn"
+      },
+      "phosphate": {
+        "name": "Fosfat"
+      },
+      "borate": {
+        "name": "Borat"
+      },
+      "combined_chlorine": {
+        "name": "Bundet klor"
+      },
+      "fc_cya_ratio": {
+        "name": "FK/CYA-förhållande"
+      },
+      "last_reading": {
+        "name": "Senaste avläsning"
+      },
+      "report_time": {
+        "name": "Rapporttid"
+      },
+      "water_quality": {
+        "name": "Vattenkvalitet"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Ansluten"
+      },
+      "connection_enabled": {
+        "name": "Anslutning aktiverad"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Tvinga återanslutning"
+      }
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Выберите обнаруженное устройство SpinTouch или введите Bluetooth-адрес вручную.",
+        "data": {
+          "address": "Bluetooth-адрес",
+          "disk_series": "Серия диска"
+        },
+        "data_description": {
+          "address": "MAC-адрес Bluetooth вашего устройства SpinTouch",
+          "disk_series": "Серия SpinDisk, которую вы используете (Автоопределение работает для большинства пользователей)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Подтвердить SpinTouch",
+        "description": "Хотите настроить {name} ({address})?",
+        "data": {
+          "disk_series": "Серия диска"
+        },
+        "data_description": {
+          "disk_series": "Серия SpinDisk, которую вы используете (Автоопределение работает для большинства пользователей)"
+        }
+      },
+      "reconfigure": {
+        "title": "Перенастроить SpinTouch",
+        "description": "Обновить конфигурацию для {name}.",
+        "data": {
+          "disk_series": "Серия диска"
+        },
+        "data_description": {
+          "disk_series": "Серия SpinDisk, которую вы используете (Автоопределение работает для большинства пользователей)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Устройство уже настроено",
+      "no_device": "Устройство не найдено",
+      "reconfigure_successful": "Конфигурация успешно обновлена"
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться к устройству"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметры SpinTouch",
+        "data": {
+          "disk_series": "Серия диска"
+        },
+        "data_description": {
+          "disk_series": "Серия SpinDisk, которую вы используете (Автоопределение работает для большинства пользователей)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Не удалось подключиться к устройству SpinTouch по адресу {address}. Убедитесь, что устройство включено и находится в зоне действия Bluetooth."
+    },
+    "communication_error": {
+      "message": "Ошибка связи с устройством SpinTouch: {error}"
+    },
+    "data_parse_error": {
+      "message": "Не удалось обработать данные от устройства SpinTouch. Возможно, устройство нужно протестировать снова."
+    },
+    "device_unavailable": {
+      "message": "Устройство SpinTouch по адресу {address} недоступно. Проверьте, включено ли оно и находится ли в зоне действия Bluetooth."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Свободный хлор"
+      },
+      "total_chlorine": {
+        "name": "Общий хлор"
+      },
+      "bromine": {
+        "name": "Бром"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Общая щёлочность"
+      },
+      "calcium": {
+        "name": "Кальциевая жёсткость"
+      },
+      "cyanuric_acid": {
+        "name": "Циануровая кислота"
+      },
+      "salt": {
+        "name": "Соль"
+      },
+      "copper": {
+        "name": "Медь"
+      },
+      "iron": {
+        "name": "Железо"
+      },
+      "phosphate": {
+        "name": "Фосфат"
+      },
+      "borate": {
+        "name": "Борат"
+      },
+      "combined_chlorine": {
+        "name": "Связанный хлор"
+      },
+      "fc_cya_ratio": {
+        "name": "Соотношение СХ/ЦК"
+      },
+      "last_reading": {
+        "name": "Последнее измерение"
+      },
+      "report_time": {
+        "name": "Время отчёта"
+      },
+      "water_quality": {
+        "name": "Качество воды"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Подключено"
+      },
+      "connection_enabled": {
+        "name": "Подключение включено"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Принудительное переподключение"
+      }
+    }
+  }
+}

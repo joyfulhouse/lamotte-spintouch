@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "選擇已發現的 SpinTouch 裝置或手動輸入藍牙地址。",
+        "data": {
+          "address": "藍牙地址",
+          "disk_series": "試劑盤系列"
+        },
+        "data_description": {
+          "address": "您的 SpinTouch 裝置的藍牙 MAC 地址",
+          "disk_series": "您使用的 SpinDisk 系列（自動偵測適用於大多數使用者）"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "確認 SpinTouch",
+        "description": "您要設定 {name} ({address}) 嗎？",
+        "data": {
+          "disk_series": "試劑盤系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自動偵測適用於大多數使用者）"
+        }
+      },
+      "reconfigure": {
+        "title": "重新設定 SpinTouch",
+        "description": "更新 {name} 的設定。",
+        "data": {
+          "disk_series": "試劑盤系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自動偵測適用於大多數使用者）"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "裝置已設定",
+      "no_device": "找不到裝置",
+      "reconfigure_successful": "設定更新成功"
+    },
+    "error": {
+      "cannot_connect": "無法連線到裝置"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch 選項",
+        "data": {
+          "disk_series": "試劑盤系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自動偵測適用於大多數使用者）"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "無法連線到地址為 {address} 的 SpinTouch 裝置。請確保裝置已開機並在藍牙範圍內。"
+    },
+    "communication_error": {
+      "message": "與 SpinTouch 裝置通訊時發生錯誤：{error}"
+    },
+    "data_parse_error": {
+      "message": "無法解析 SpinTouch 裝置的資料。裝置可能需要重新測試。"
+    },
+    "device_unavailable": {
+      "message": "地址為 {address} 的 SpinTouch 裝置不可用。請檢查裝置是否已開機並在藍牙範圍內。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "游離氯"
+      },
+      "total_chlorine": {
+        "name": "總氯"
+      },
+      "bromine": {
+        "name": "溴"
+      },
+      "ph": {
+        "name": "pH 值"
+      },
+      "alkalinity": {
+        "name": "總鹼度"
+      },
+      "calcium": {
+        "name": "鈣硬度"
+      },
+      "cyanuric_acid": {
+        "name": "氰尿酸"
+      },
+      "salt": {
+        "name": "鹽"
+      },
+      "copper": {
+        "name": "銅"
+      },
+      "iron": {
+        "name": "鐵"
+      },
+      "phosphate": {
+        "name": "磷酸鹽"
+      },
+      "borate": {
+        "name": "硼酸鹽"
+      },
+      "combined_chlorine": {
+        "name": "化合氯"
+      },
+      "fc_cya_ratio": {
+        "name": "游離氯/氰尿酸比"
+      },
+      "last_reading": {
+        "name": "最後讀數"
+      },
+      "report_time": {
+        "name": "報告時間"
+      },
+      "water_quality": {
+        "name": "水質"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "已連線"
+      },
+      "connection_enabled": {
+        "name": "連線已啟用"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "強制重新連線"
+      }
+    }
+  }
+}

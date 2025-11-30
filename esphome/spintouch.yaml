@@ -1,5 +1,14 @@
 # SpinTouch Reader - ESPHome Configuration
 # LaMotte SpinTouch Water Quality Sensor Integration
+#
+# This is an ALTERNATIVE to using the custom Home Assistant integration
+# with ESPHome Bluetooth Proxies. Use this approach when you want:
+# - A dedicated ESP32 device for SpinTouch
+# - Local processing without Home Assistant dependency
+# - The device to work standalone with its own web UI
+#
+# For most users, the custom integration with existing Bluetooth proxies
+# is recommended. See the custom_components/spintouch directory.
 
 substitutions:
   # Device settings
@@ -32,8 +41,16 @@ substitutions:
   salt_max: "3400"
   # Iron
   iron_max: "0.3"
+  # Copper
+  copper_max: "0.3"
   # Phosphate (ppb)
   phosphate_max: "100"
+  # Borate
+  borate_min: "30"
+  borate_max: "50"
+  # Bromine (for bromine pools)
+  bromine_min: "2.0"
+  bromine_max: "4.0"
 
 esphome:
   name: ${device_name}
@@ -139,6 +156,21 @@ globals:
     initial_value: 'NAN'
 
   - id: g_phosphate
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+
+  - id: g_bromine
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+
+  - id: g_copper
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+
+  - id: g_borate
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -291,104 +323,155 @@ sensor:
     characteristic_uuid: "00000000-0000-1000-8000-bbbd00000010"
     update_interval: never
     lambda: |-
-      if (x.size() < 70) {
+      // Minimum data size: 4-byte header + at least one 6-byte entry
+      if (x.size() < 10) {
         ESP_LOGW("spintouch", "Data too short: %d bytes", x.size());
         return NAN;
       }
-      ESP_LOGI("spintouch", "Received %d bytes", x.size());
 
-      // Helper lambda to validate float values
+      // Verify start signature [0x01, 0x02, 0x03, 0x05]
+      if (x[0] != 0x01 || x[1] != 0x02 || x[2] != 0x03 || x[3] != 0x05) {
+        ESP_LOGW("spintouch", "Invalid start signature");
+        return NAN;
+      }
+
+      ESP_LOGI("spintouch", "Received %d bytes with valid signature", x.size());
+
+      // Helper to validate float values
       auto is_valid = [](float v) -> bool {
         return !isnan(v) && !isinf(v) && v >= -10000 && v <= 100000;
       };
 
-      // Parse all parameters from BLE data
-      // Format: 4-byte header, then 6-byte entries [param_id, flags, float32_le]
+      // Param ID constants (from TestType enum in decompiled app)
+      const uint8_t PARAM_FREE_CHLORINE = 0x01;
+      const uint8_t PARAM_TOTAL_CHLORINE = 0x02;
+      const uint8_t PARAM_BROMINE = 0x03;
+      const uint8_t PARAM_PH = 0x06;
+      const uint8_t PARAM_ALKALINITY = 0x07;
+      const uint8_t PARAM_CALCIUM_HR = 0x08;
+      const uint8_t PARAM_CYANURIC_ACID = 0x0A;
+      const uint8_t PARAM_IRON = 0x0B;
+      const uint8_t PARAM_COPPER = 0x0C;
+      const uint8_t PARAM_BORATE = 0x0D;
+      const uint8_t PARAM_PHOSPHATE = 0x0E;
+      const uint8_t PARAM_CALCIUM = 0x0F;
+      const uint8_t PARAM_SALT = 0x10;
+      const uint8_t PARAM_COMBINED_CHLORINE = 0x11;
 
-      // Offset 4: Free Chlorine (0x01)
-      float fc = *reinterpret_cast<const float*>(&x[6]);
-      if (is_valid(fc) && fc >= 0 && fc <= 20) {
-        id(g_free_chlorine) = fc;
-        id(free_chlorine).publish_state(fc);
-      } else {
-        ESP_LOGW("spintouch", "Invalid FC value: %.2f", fc);
+      // Parse entries by scanning for param IDs
+      // Format: 4-byte header, then 6-byte entries [param_id, decimals, float32_le]
+      // Maximum 12 entries, ends at timestamp offset (76) or end signature
+      const int HEADER_SIZE = 4;
+      const int ENTRY_SIZE = 6;
+      const int MAX_ENTRIES = 12;
+
+      for (int i = 0; i < MAX_ENTRIES; i++) {
+        int offset = HEADER_SIZE + (i * ENTRY_SIZE);
+        if (offset + ENTRY_SIZE > x.size()) break;
+
+        uint8_t param_id = x[offset];
+        // uint8_t decimals = x[offset + 1];  // Available if needed
+        float value = *reinterpret_cast<const float*>(&x[offset + 2]);
+
+        // Check for end signature (entry starts with 0x07)
+        if (param_id == 0x07 && x[offset + 1] == 0x0B) {
+          ESP_LOGD("spintouch", "End signature found at entry %d", i);
+          break;
+        }
+
+        // Skip invalid/empty entries
+        if (param_id == 0x00 || !is_valid(value)) continue;
+
+        ESP_LOGD("spintouch", "Entry %d: param=0x%02X value=%.2f", i, param_id, value);
+
+        // Map param_id to sensor
+        switch (param_id) {
+          case PARAM_FREE_CHLORINE:
+            if (value >= 0 && value <= 20) {
+              id(g_free_chlorine) = value;
+              id(free_chlorine).publish_state(value);
+            }
+            break;
+          case PARAM_TOTAL_CHLORINE:
+            if (value >= 0 && value <= 20) {
+              id(g_total_chlorine) = value;
+              id(total_chlorine).publish_state(value);
+            }
+            break;
+          case PARAM_BROMINE:
+            if (value >= 0 && value <= 20) {
+              id(g_bromine) = value;
+              id(bromine_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_PH:
+            if (value >= 0 && value <= 14) {
+              id(g_ph) = value;
+              id(ph_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_ALKALINITY:
+            if (value >= 0 && value <= 500) {
+              id(g_alkalinity) = value;
+              id(alkalinity).publish_state(value);
+            }
+            break;
+          case PARAM_CALCIUM:
+          case PARAM_CALCIUM_HR:
+            if (value >= 0 && value <= 1200) {
+              id(g_calcium) = value;
+              id(calcium).publish_state(value);
+            }
+            break;
+          case PARAM_CYANURIC_ACID:
+            if (value >= 0 && value <= 300) {
+              id(g_cya) = value;
+              id(cya_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_SALT:
+            if (value >= 0 && value <= 10000) {
+              id(g_salt) = value;
+              id(salt_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_COPPER:
+            if (value >= 0 && value <= 5) {
+              id(g_copper) = value;
+              id(copper_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_IRON:
+            if (value >= 0 && value <= 5) {
+              id(g_iron) = value;
+              id(iron_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_PHOSPHATE:
+            if (value >= 0 && value <= 2500) {
+              id(g_phosphate) = value;
+              id(phosphate).publish_state(value);
+            }
+            break;
+          case PARAM_BORATE:
+            if (value >= 0 && value <= 100) {
+              id(g_borate) = value;
+              id(borate_sensor).publish_state(value);
+            }
+            break;
+          case PARAM_COMBINED_CHLORINE:
+            // Device-reported combined chlorine (may not always be present)
+            ESP_LOGD("spintouch", "Device-reported CC: %.2f", value);
+            break;
+          default:
+            ESP_LOGD("spintouch", "Unknown param 0x%02X: %.2f", param_id, value);
+            break;
+        }
       }
 
-      // Offset 10: Total Chlorine (0x02)
-      float tc = *reinterpret_cast<const float*>(&x[12]);
-      if (is_valid(tc) && tc >= 0 && tc <= 20) {
-        id(g_total_chlorine) = tc;
-        id(total_chlorine).publish_state(tc);
-      } else {
-        ESP_LOGW("spintouch", "Invalid TC value: %.2f", tc);
-      }
-
-      // Offset 22: pH (0x06)
-      float ph = *reinterpret_cast<const float*>(&x[24]);
-      if (is_valid(ph) && ph >= 0 && ph <= 14) {
-        id(g_ph) = ph;
-        id(ph_sensor).publish_state(ph);
-      } else {
-        ESP_LOGW("spintouch", "Invalid pH value: %.2f", ph);
-      }
-
-      // Offset 28: Alkalinity (0x07)
-      float alk = *reinterpret_cast<const float*>(&x[30]);
-      if (is_valid(alk) && alk >= 0 && alk <= 500) {
-        id(g_alkalinity) = alk;
-        id(alkalinity).publish_state(alk);
-      } else {
-        ESP_LOGW("spintouch", "Invalid Alkalinity value: %.2f", alk);
-      }
-
-      // Offset 34: Calcium Hardness (0x0F)
-      float ca = *reinterpret_cast<const float*>(&x[36]);
-      if (is_valid(ca) && ca >= 0 && ca <= 1000) {
-        id(g_calcium) = ca;
-        id(calcium).publish_state(ca);
-      } else {
-        ESP_LOGW("spintouch", "Invalid Calcium value: %.2f", ca);
-      }
-
-      // Offset 40: Cyanuric Acid (0x0A)
-      float cya = *reinterpret_cast<const float*>(&x[42]);
-      if (is_valid(cya) && cya >= 0 && cya <= 300) {
-        id(g_cya) = cya;
-        id(cya_sensor).publish_state(cya);
-      } else {
-        ESP_LOGW("spintouch", "Invalid CYA value: %.2f", cya);
-      }
-
-      // Offset 46: Salt (0x0C)
-      float salt = *reinterpret_cast<const float*>(&x[48]);
-      if (is_valid(salt) && salt >= 0 && salt <= 10000) {
-        id(g_salt) = salt;
-        id(salt_sensor).publish_state(salt);
-      } else {
-        ESP_LOGW("spintouch", "Invalid Salt value: %.2f", salt);
-      }
-
-      // Offset 52: Iron (0x0B)
-      float iron = *reinterpret_cast<const float*>(&x[54]);
-      if (is_valid(iron) && iron >= 0 && iron <= 10) {
-        id(g_iron) = iron;
-        id(iron_sensor).publish_state(iron);
-      } else {
-        ESP_LOGW("spintouch", "Invalid Iron value: %.2f", iron);
-      }
-
-      // Offset 58: Phosphate (0x0D)
-      float phos = *reinterpret_cast<const float*>(&x[60]);
-      if (is_valid(phos) && phos >= 0 && phos <= 2000) {
-        id(g_phosphate) = phos;
-        id(phosphate).publish_state(phos);
-      } else {
-        ESP_LOGW("spintouch", "Invalid Phosphate value: %.2f", phos);
-      }
-
-      ESP_LOGI("spintouch", "FC:%.2f TC:%.2f pH:%.2f Alk:%.0f Ca:%.0f CYA:%.0f Salt:%.0f Fe:%.3f PO4:%.0f",
-               id(g_free_chlorine), id(g_total_chlorine), id(g_ph), id(g_alkalinity),
-               id(g_calcium), id(g_cya), id(g_salt), id(g_iron), id(g_phosphate));
+      ESP_LOGI("spintouch", "FC:%.2f TC:%.2f BR:%.2f pH:%.2f Alk:%.0f Ca:%.0f CYA:%.0f Salt:%.0f Cu:%.3f Fe:%.3f PO4:%.0f BOR:%.1f",
+               id(g_free_chlorine), id(g_total_chlorine), id(g_bromine), id(g_ph), id(g_alkalinity),
+               id(g_calcium), id(g_cya), id(g_salt), id(g_copper), id(g_iron), id(g_phosphate), id(g_borate));
 
       // Trigger the disconnect timer script
       id(handle_reading_received).execute();
@@ -475,6 +558,33 @@ sensor:
     accuracy_decimals: 1
     icon: "mdi:leaf"
     lambda: 'return id(g_phosphate);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Bromine"
+    id: bromine_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    lambda: 'return id(g_bromine);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Copper"
+    id: copper_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 2
+    icon: "mdi:flask"
+    lambda: 'return id(g_copper);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Borate"
+    id: borate_sensor
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 1
+    icon: "mdi:flask-outline"
+    lambda: 'return id(g_borate);'
     update_interval: 60s
 
   # ===== Calculated Sensors =====
@@ -622,21 +732,55 @@ binary_sensor:
       return v <= ${phosphate_max};
 
   - platform: template
+    name: "Bromine In Range"
+    id: bromine_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_bromine);
+      if (isnan(v)) return false;
+      return v >= ${bromine_min} && v <= ${bromine_max};
+
+  - platform: template
+    name: "Copper In Range"
+    id: copper_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_copper);
+      if (isnan(v)) return false;
+      return v <= ${copper_max};
+
+  - platform: template
+    name: "Borate In Range"
+    id: borate_in_range
+    icon: "mdi:check-circle"
+    lambda: |-
+      float v = id(g_borate);
+      if (isnan(v)) return false;
+      return v >= ${borate_min} && v <= ${borate_max};
+
+  - platform: template
     name: "All Parameters In Range"
     id: all_in_range
     icon: "mdi:check-decagram"
     device_class: problem
     lambda: |-
       // Returns true if ANY parameter is out of range (problem detected)
-      bool fc_ok = id(fc_in_range).state;
-      bool ph_ok = id(ph_in_range).state;
-      bool alk_ok = id(alk_in_range).state;
-      bool ca_ok = id(ca_in_range).state;
-      bool cya_ok = id(cya_in_range).state;
-      bool iron_ok = id(iron_in_range).state;
-      bool phos_ok = id(phosphate_in_range).state;
-      // Return true if there's a problem (inverted for device_class: problem)
-      return !(fc_ok && ph_ok && alk_ok && ca_ok && cya_ok && iron_ok && phos_ok);
+      // Only check sensors that have valid (non-NaN) values
+      bool has_problem = false;
+
+      // Check chlorine sensors (skip if NaN - not tested)
+      if (!isnan(id(g_free_chlorine)) && !id(fc_in_range).state) has_problem = true;
+      if (!isnan(id(g_ph)) && !id(ph_in_range).state) has_problem = true;
+      if (!isnan(id(g_alkalinity)) && !id(alk_in_range).state) has_problem = true;
+      if (!isnan(id(g_calcium)) && !id(ca_in_range).state) has_problem = true;
+      if (!isnan(id(g_cya)) && !id(cya_in_range).state) has_problem = true;
+      if (!isnan(id(g_iron)) && !id(iron_in_range).state) has_problem = true;
+      if (!isnan(id(g_phosphate)) && !id(phosphate_in_range).state) has_problem = true;
+      if (!isnan(id(g_bromine)) && !id(bromine_in_range).state) has_problem = true;
+      if (!isnan(id(g_copper)) && !id(copper_in_range).state) has_problem = true;
+      if (!isnan(id(g_borate)) && !id(borate_in_range).state) has_problem = true;
+
+      return has_problem;
 
 # ===== Buttons =====
 button:

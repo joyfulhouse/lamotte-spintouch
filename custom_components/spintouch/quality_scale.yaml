@@ -1,0 +1,230 @@
+# Integration Quality Scale Tracking
+# https://developers.home-assistant.io/docs/core/integration-quality-scale
+#
+# Status values: done, todo, exempt
+# For exempt rules, include a comment explaining why
+
+rules:
+  # =============================================================================
+  # Bronze Tier (Baseline Requirements)
+  # =============================================================================
+
+  action-setup:
+    status: exempt
+    comment: This integration does not provide service actions.
+
+  appropriate-polling:
+    status: exempt
+    comment: This is a push-based integration using BLE notifications, not polling.
+
+  brands:
+    status: done
+    comment: Brand assets submitted via PR to home-assistant/brands repository.
+
+  common-modules:
+    status: done
+    comment: Common patterns in base.py (SpinTouchEntity mixin) and util.py (TimerManager, restore helpers).
+
+  config-flow:
+    status: done
+    comment: Full config flow with Bluetooth discovery and manual setup in config_flow.py.
+
+  config-flow-test-coverage:
+    status: todo
+    comment: Need to add pytest tests for config flow.
+
+  dependency-transparency:
+    status: done
+    comment: Dependencies (bleak, bleak-retry-connector) declared in manifest.json requirements.
+
+  docs-actions:
+    status: exempt
+    comment: This integration does not provide service actions.
+
+  docs-high-level-description:
+    status: done
+    comment: README provides overview of LaMotte SpinTouch device and integration purpose.
+
+  docs-installation-instructions:
+    status: done
+    comment: README includes HACS and manual installation instructions.
+
+  docs-removal-instructions:
+    status: done
+    comment: README includes removal instructions section.
+
+  entity-event-setup:
+    status: done
+    comment: BLE notifications subscribed in coordinator.async_connect() after connection established.
+
+  entity-unique-id:
+    status: done
+    comment: All entities have unique IDs via _setup_spintouch_device() in base.py.
+
+  has-entity-name:
+    status: done
+    comment: All entities set _attr_has_entity_name = True.
+
+  runtime-data:
+    status: done
+    comment: Using entry.runtime_data to store SpinTouchCoordinator.
+
+  test-before-configure:
+    status: todo
+    comment: Config flow should test BLE connection before completing setup.
+
+  test-before-setup:
+    status: done
+    comment: async_setup_entry attempts connection and logs if device not visible.
+
+  unique-config-entry:
+    status: done
+    comment: Config flow uses _abort_if_unique_id_configured() to prevent duplicates.
+
+  # =============================================================================
+  # Silver Tier (Reliability & Robustness)
+  # =============================================================================
+
+  action-exceptions:
+    status: exempt
+    comment: This integration does not provide service actions.
+
+  config-entry-unloading:
+    status: done
+    comment: async_unload_entry properly disconnects and cleans up resources.
+
+  docs-configuration-parameters:
+    status: done
+    comment: README documents disk_series parameter with description.
+
+  docs-installation-parameters:
+    status: done
+    comment: README documents Bluetooth address and disk series parameters.
+
+  entity-unavailable:
+    status: todo
+    comment: Need to ensure entities properly report unavailable when device disconnects.
+
+  integration-owner:
+    status: done
+    comment: "@joyfulhouse listed as codeowner in manifest.json."
+
+  log-when-unavailable:
+    status: done
+    comment: Coordinator logs connection failures and disconnect events appropriately.
+
+  parallel-updates:
+    status: exempt
+    comment: Single BLE device with push-based updates, no parallel update concerns.
+
+  reauthentication-flow:
+    status: exempt
+    comment: BLE device has no authentication - connects directly via MAC address.
+
+  test-coverage:
+    status: todo
+    comment: Need to add comprehensive pytest tests.
+
+  # =============================================================================
+  # Gold Tier (Premium User Experience)
+  # =============================================================================
+
+  devices:
+    status: done
+    comment: Creates device via DeviceInfo in base.py with manufacturer and model.
+
+  diagnostics:
+    status: done
+    comment: Implemented in diagnostics.py with device info and sensor values.
+
+  discovery:
+    status: done
+    comment: Bluetooth discovery via service UUID and local_name patterns in manifest.json.
+
+  discovery-update-info:
+    status: done
+    comment: Service info updated in async_handle_bluetooth_event callback.
+
+  docs-data-update:
+    status: done
+    comment: README describes push-based updates and connection lifecycle.
+
+  docs-examples:
+    status: done
+    comment: README includes automation examples and dashboard card configuration.
+
+  docs-known-limitations:
+    status: done
+    comment: README includes Known Limitations section.
+
+  docs-supported-devices:
+    status: done
+    comment: README documents SpinDisk compatibility table.
+
+  docs-supported-functions:
+    status: done
+    comment: README documents all sensors, binary sensors, and controls.
+
+  docs-troubleshooting:
+    status: done
+    comment: README includes troubleshooting section with common fixes.
+
+  docs-use-cases:
+    status: done
+    comment: README includes Use Cases section with automation examples.
+
+  dynamic-devices:
+    status: exempt
+    comment: Integration connects to a single physical device configured at setup.
+
+  entity-category:
+    status: done
+    comment: Diagnostic sensors use EntityCategory.DIAGNOSTIC, button uses EntityCategory.CONFIG.
+
+  entity-device-class:
+    status: done
+    comment: Sensors use SensorDeviceClass.TIMESTAMP, binary sensors use BinarySensorDeviceClass.CONNECTIVITY.
+
+  entity-disabled-by-default:
+    status: todo
+    comment: Consider disabling less common sensors (borate, phosphate) by default.
+
+  entity-translations:
+    status: done
+    comment: Entity names defined in strings.json and translations/en.json.
+
+  exception-translations:
+    status: todo
+    comment: Exception messages should be translatable.
+
+  icon-translations:
+    status: todo
+    comment: Could implement dynamic icon translations.
+
+  reconfiguration-flow:
+    status: done
+    comment: Implemented async_step_reconfigure and OptionsFlow for changing disk series.
+
+  repair-issues:
+    status: todo
+    comment: Could add repair issues for common problems like device not found.
+
+  stale-devices:
+    status: exempt
+    comment: Single device per config entry, device removal handled by entry unload.
+
+  # =============================================================================
+  # Platinum Tier (Technical Excellence)
+  # =============================================================================
+
+  async-dependency:
+    status: done
+    comment: Uses bleak which is fully async for BLE operations.
+
+  inject-websession:
+    status: exempt
+    comment: BLE integration does not make HTTP requests.
+
+  strict-typing:
+    status: done
+    comment: py.typed marker present, mypy strict mode passes with no errors.

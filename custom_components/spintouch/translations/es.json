@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Seleccione un dispositivo SpinTouch descubierto o ingrese la dirección Bluetooth manualmente.",
+        "data": {
+          "address": "Dirección Bluetooth",
+          "disk_series": "Serie de disco"
+        },
+        "data_description": {
+          "address": "La dirección MAC Bluetooth de su dispositivo SpinTouch",
+          "disk_series": "La serie SpinDisk que utiliza (La detección automática funciona para la mayoría de los usuarios)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Confirmar SpinTouch",
+        "description": "¿Desea configurar {name} ({address})?",
+        "data": {
+          "disk_series": "Serie de disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk que utiliza (La detección automática funciona para la mayoría de los usuarios)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar SpinTouch",
+        "description": "Actualizar la configuración para {name}.",
+        "data": {
+          "disk_series": "Serie de disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk que utiliza (La detección automática funciona para la mayoría de los usuarios)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "El dispositivo ya está configurado",
+      "no_device": "No se encontró ningún dispositivo",
+      "reconfigure_successful": "Configuración actualizada con éxito"
+    },
+    "error": {
+      "cannot_connect": "Error al conectar con el dispositivo"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones de SpinTouch",
+        "data": {
+          "disk_series": "Serie de disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk que utiliza (La detección automática funciona para la mayoría de los usuarios)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Error al conectar con el dispositivo SpinTouch en {address}. Asegúrese de que el dispositivo esté encendido y dentro del alcance de Bluetooth."
+    },
+    "communication_error": {
+      "message": "Error de comunicación con el dispositivo SpinTouch: {error}"
+    },
+    "data_parse_error": {
+      "message": "Error al analizar los datos del dispositivo SpinTouch. Es posible que el dispositivo necesite ser probado nuevamente."
+    },
+    "device_unavailable": {
+      "message": "El dispositivo SpinTouch en {address} no está disponible. Verifique que esté encendido y dentro del alcance de Bluetooth."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Cloro libre"
+      },
+      "total_chlorine": {
+        "name": "Cloro total"
+      },
+      "bromine": {
+        "name": "Bromo"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Alcalinidad total"
+      },
+      "calcium": {
+        "name": "Dureza de calcio"
+      },
+      "cyanuric_acid": {
+        "name": "Ácido cianúrico"
+      },
+      "salt": {
+        "name": "Sal"
+      },
+      "copper": {
+        "name": "Cobre"
+      },
+      "iron": {
+        "name": "Hierro"
+      },
+      "phosphate": {
+        "name": "Fosfato"
+      },
+      "borate": {
+        "name": "Borato"
+      },
+      "combined_chlorine": {
+        "name": "Cloro combinado"
+      },
+      "fc_cya_ratio": {
+        "name": "Relación CL/ACY"
+      },
+      "last_reading": {
+        "name": "Última lectura"
+      },
+      "report_time": {
+        "name": "Hora del informe"
+      },
+      "water_quality": {
+        "name": "Calidad del agua"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Conectado"
+      },
+      "connection_enabled": {
+        "name": "Conexión habilitada"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Forzar reconexión"
+      }
+    }
+  }
+}

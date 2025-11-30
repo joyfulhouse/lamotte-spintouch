@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHON_VERSION: "3.13"
+
 jobs:
   # Linting and Type Checking
   lint:
@@ -28,10 +31,10 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --all-extras
 
       - name: Run Ruff linter
         run: uv run ruff check custom_components/
@@ -41,6 +44,36 @@ jobs:
 
       - name: Run Mypy type checker
         run: uv run mypy custom_components/
+
+  # Unit Tests
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -v --cov=custom_components/spintouch --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
 
   # HACS Validation
   validate-hacs:
@@ -112,11 +145,15 @@ jobs:
           echo "## Silver Tier Requirements" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          SILVER_PASS=true
+
           # Check for translations
           if [ -d "custom_components/spintouch/translations" ]; then
-            echo "✅ Translations: translations/ directory exists" >> $GITHUB_STEP_SUMMARY
+            TRANS_COUNT=$(ls -1 custom_components/spintouch/translations/*.json 2>/dev/null | wc -l)
+            echo "✅ Translations: $TRANS_COUNT language files" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Translations: translations/ directory missing" >> $GITHUB_STEP_SUMMARY
+            SILVER_PASS=false
           fi
 
           # Check for coordinator (stable experience)
@@ -124,10 +161,24 @@ jobs:
             echo "✅ Data Coordinator: coordinator.py exists" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Data Coordinator: coordinator.py missing" >> $GITHUB_STEP_SUMMARY
+            SILVER_PASS=false
+          fi
+
+          # Check for test coverage
+          if [ -d "tests" ] && [ "$(ls -A tests/*.py 2>/dev/null)" ]; then
+            TEST_COUNT=$(ls -1 tests/test_*.py 2>/dev/null | wc -l)
+            echo "✅ Tests: $TEST_COUNT test files" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Tests: No test files found" >> $GITHUB_STEP_SUMMARY
+            SILVER_PASS=false
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Silver tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+          if [ "$SILVER_PASS" = true ]; then
+            echo "**Silver tier: PASS**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Silver tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Check Gold tier requirements
         run: |
@@ -135,22 +186,37 @@ jobs:
           echo "## Gold Tier Requirements" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          GOLD_PASS=true
+
           # Check for Bluetooth discovery in manifest
           if grep -q '"bluetooth"' custom_components/spintouch/manifest.json; then
             echo "✅ Auto-discovery: Bluetooth discovery configured" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Auto-discovery: Bluetooth discovery not configured" >> $GITHUB_STEP_SUMMARY
+            GOLD_PASS=false
           fi
 
-          # Check for documentation
-          if [ -f "docs/TROUBLESHOOTING.md" ]; then
-            echo "✅ Troubleshooting: docs/TROUBLESHOOTING.md exists" >> $GITHUB_STEP_SUMMARY
+          # Check for diagnostics
+          if [ -f "custom_components/spintouch/diagnostics.py" ]; then
+            echo "✅ Diagnostics: diagnostics.py exists" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Troubleshooting: docs/TROUBLESHOOTING.md missing" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Diagnostics: diagnostics.py missing" >> $GITHUB_STEP_SUMMARY
+            GOLD_PASS=false
+          fi
+
+          # Check for icons.json
+          if [ -f "custom_components/spintouch/icons.json" ]; then
+            echo "✅ Icons: icons.json exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Icons: icons.json missing" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Gold tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+          if [ "$GOLD_PASS" = true ]; then
+            echo "**Gold tier: PASS**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Gold tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Check Platinum tier requirements
         run: |
@@ -158,18 +224,30 @@ jobs:
           echo "## Platinum Tier Requirements" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Check for type annotations (verified by mypy in lint job)
-          echo "✅ Type annotations: Verified by mypy job" >> $GITHUB_STEP_SUMMARY
+          PLATINUM_PASS=true
+
+          # Check for py.typed (strict typing marker)
+          if [ -f "custom_components/spintouch/py.typed" ]; then
+            echo "✅ Strict typing: py.typed marker exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Strict typing: py.typed marker missing" >> $GITHUB_STEP_SUMMARY
+            PLATINUM_PASS=false
+          fi
 
           # Check for async patterns
           if grep -q "async def" custom_components/spintouch/*.py; then
             echo "✅ Async implementation: async def patterns found" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Async implementation: No async patterns detected" >> $GITHUB_STEP_SUMMARY
+            PLATINUM_PASS=false
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platinum tier: PARTIAL** (code quality meets standards)" >> $GITHUB_STEP_SUMMARY
+          if [ "$PLATINUM_PASS" = true ]; then
+            echo "**Platinum tier: PASS**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Platinum tier: PARTIAL**" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Quality Scale Summary
         run: |
@@ -178,4 +256,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See [docs/QUALITY_SCALE.md](../docs/QUALITY_SCALE.md) for detailed compliance status." >> $GITHUB_STEP_SUMMARY
+          echo "See [quality_scale.yaml](custom_components/spintouch/quality_scale.yaml) for detailed compliance status." >> $GITHUB_STEP_SUMMARY

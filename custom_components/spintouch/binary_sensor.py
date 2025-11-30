@@ -12,22 +12,22 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .base import SpinTouchEntity
-from .const import DOMAIN
 from .coordinator import SpinTouchCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import SpinTouchConfigEntry
+
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
+    _hass: HomeAssistant,
+    entry: SpinTouchConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SpinTouch binary sensors from a config entry."""
-    coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     async_add_entities(
         [
@@ -51,7 +51,7 @@ class SpinTouchConnectedSensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -77,7 +77,7 @@ class SpinTouchConnectionEnabledSensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)

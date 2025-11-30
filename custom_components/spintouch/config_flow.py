@@ -7,10 +7,22 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import bluetooth
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
 
-from .const import CONF_DISK_SERIES, DEFAULT_DISK_SERIES, DISK_SERIES_OPTIONS, DOMAIN, SERVICE_UUID
+from .const import (
+    CONF_DISK_SERIES,
+    DEFAULT_DISK_SERIES,
+    DOMAIN,
+    SERVICE_UUID,
+    get_disk_series_display_options,
+)
 
 if TYPE_CHECKING:
     from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -63,18 +75,12 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
                 },
             )
 
-        # Build disk series options with chemical names
-        disk_options = {
-            series: f"Disk {series} ({chemical})"
-            for series, chemical in DISK_SERIES_OPTIONS.items()
-        }
-
         return self.async_show_form(
             step_id="bluetooth_confirm",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
-                        disk_options
+                        get_disk_series_display_options()
                     ),
                 }
             ),
@@ -116,11 +122,7 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
             if SERVICE_UUID.lower() in [uuid.lower() for uuid in service_info.service_uuids]:
                 self._discovered_devices[service_info.address] = service_info
 
-        # Build disk series options with chemical names
-        disk_options = {
-            series: f"Disk {series} ({chemical})"
-            for series, chemical in DISK_SERIES_OPTIONS.items()
-        }
+        disk_options = get_disk_series_display_options()
 
         if self._discovered_devices:
             # Show picker for discovered devices
@@ -140,18 +142,83 @@ class SpinTouchConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,m
                 ),
                 errors=errors,
             )
-        else:
-            # No devices found - allow manual entry
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(CONF_ADDRESS): str,
-                        vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
-                            disk_options
-                        ),
-                    }
-                ),
-                errors=errors,
-                description_placeholders={"no_devices": "true"},
+
+        # No devices found - allow manual entry
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Required(CONF_DISK_SERIES, default=DEFAULT_DISK_SERIES): vol.In(
+                        disk_options
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"no_devices": "true"},
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration of the integration."""
+        reconfigure_entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                reconfigure_entry,
+                data_updates={CONF_DISK_SERIES: user_input[CONF_DISK_SERIES]},
             )
+
+        current_series = reconfigure_entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DISK_SERIES, default=current_series): vol.In(
+                        get_disk_series_display_options()
+                    ),
+                }
+            ),
+            description_placeholders={
+                "name": reconfigure_entry.title,
+            },
+        )
+
+    @staticmethod
+    @callback  # type: ignore[misc]
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> SpinTouchOptionsFlow:
+        """Get the options flow for this handler."""
+        return SpinTouchOptionsFlow(config_entry)
+
+
+class SpinTouchOptionsFlow(OptionsFlow):  # type: ignore[misc]
+    """Handle options flow for SpinTouch."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            # Update config entry data with new disk series
+            new_data = {**self.config_entry.data, CONF_DISK_SERIES: user_input[CONF_DISK_SERIES]}
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            return self.async_create_entry(title="", data={})
+
+        current_series = self.config_entry.data.get(CONF_DISK_SERIES, DEFAULT_DISK_SERIES)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DISK_SERIES, default=current_series): vol.In(
+                        get_disk_series_display_options()
+                    ),
+                }
+            ),
+        )
