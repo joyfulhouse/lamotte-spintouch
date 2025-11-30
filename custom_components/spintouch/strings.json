@@ -22,14 +22,52 @@
         "data_description": {
           "disk_series": "The SpinDisk series you use (Auto-detect works for most users)"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure SpinTouch",
+        "description": "Update the configuration for {name}.",
+        "data": {
+          "disk_series": "Disk Series"
+        },
+        "data_description": {
+          "disk_series": "The SpinDisk series you use (Auto-detect works for most users)"
+        }
       }
     },
     "abort": {
       "already_configured": "Device is already configured",
-      "no_device": "No device found"
+      "no_device": "No device found",
+      "reconfigure_successful": "Configuration updated successfully"
     },
     "error": {
       "cannot_connect": "Failed to connect to device"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch Options",
+        "data": {
+          "disk_series": "Disk Series"
+        },
+        "data_description": {
+          "disk_series": "The SpinDisk series you use (Auto-detect works for most users)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Failed to connect to SpinTouch device at {address}. Please ensure the device is powered on and within Bluetooth range."
+    },
+    "communication_error": {
+      "message": "Communication error with SpinTouch device: {error}"
+    },
+    "data_parse_error": {
+      "message": "Failed to parse data from SpinTouch device. The device may need to be re-tested."
+    },
+    "device_unavailable": {
+      "message": "SpinTouch device at {address} is not available. Check that it is powered on and within Bluetooth range."
     }
   },
   "entity": {

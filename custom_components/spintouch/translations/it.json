@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Seleziona un dispositivo SpinTouch rilevato o inserisci l'indirizzo Bluetooth manualmente.",
+        "data": {
+          "address": "Indirizzo Bluetooth",
+          "disk_series": "Serie disco"
+        },
+        "data_description": {
+          "address": "L'indirizzo MAC Bluetooth del tuo dispositivo SpinTouch",
+          "disk_series": "La serie SpinDisk che utilizzi (Il rilevamento automatico funziona per la maggior parte degli utenti)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Conferma SpinTouch",
+        "description": "Vuoi configurare {name} ({address})?",
+        "data": {
+          "disk_series": "Serie disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk che utilizzi (Il rilevamento automatico funziona per la maggior parte degli utenti)"
+        }
+      },
+      "reconfigure": {
+        "title": "Riconfigura SpinTouch",
+        "description": "Aggiorna la configurazione per {name}.",
+        "data": {
+          "disk_series": "Serie disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk che utilizzi (Il rilevamento automatico funziona per la maggior parte degli utenti)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Il dispositivo è già configurato",
+      "no_device": "Nessun dispositivo trovato",
+      "reconfigure_successful": "Configurazione aggiornata con successo"
+    },
+    "error": {
+      "cannot_connect": "Connessione al dispositivo fallita"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opzioni SpinTouch",
+        "data": {
+          "disk_series": "Serie disco"
+        },
+        "data_description": {
+          "disk_series": "La serie SpinDisk che utilizzi (Il rilevamento automatico funziona per la maggior parte degli utenti)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Connessione al dispositivo SpinTouch a {address} fallita. Assicurati che il dispositivo sia acceso e nel raggio d'azione Bluetooth."
+    },
+    "communication_error": {
+      "message": "Errore di comunicazione con il dispositivo SpinTouch: {error}"
+    },
+    "data_parse_error": {
+      "message": "Analisi dei dati dal dispositivo SpinTouch fallita. Potrebbe essere necessario ripetere il test del dispositivo."
+    },
+    "device_unavailable": {
+      "message": "Il dispositivo SpinTouch a {address} non è disponibile. Verifica che sia acceso e nel raggio d'azione Bluetooth."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Cloro libero"
+      },
+      "total_chlorine": {
+        "name": "Cloro totale"
+      },
+      "bromine": {
+        "name": "Bromo"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Alcalinità totale"
+      },
+      "calcium": {
+        "name": "Durezza calcica"
+      },
+      "cyanuric_acid": {
+        "name": "Acido cianurico"
+      },
+      "salt": {
+        "name": "Sale"
+      },
+      "copper": {
+        "name": "Rame"
+      },
+      "iron": {
+        "name": "Ferro"
+      },
+      "phosphate": {
+        "name": "Fosfato"
+      },
+      "borate": {
+        "name": "Borato"
+      },
+      "combined_chlorine": {
+        "name": "Cloro combinato"
+      },
+      "fc_cya_ratio": {
+        "name": "Rapporto CL/ACY"
+      },
+      "last_reading": {
+        "name": "Ultima lettura"
+      },
+      "report_time": {
+        "name": "Ora del rapporto"
+      },
+      "water_quality": {
+        "name": "Qualità dell'acqua"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Connesso"
+      },
+      "connection_enabled": {
+        "name": "Connessione abilitata"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Forza riconnessione"
+      }
+    }
+  }
+}

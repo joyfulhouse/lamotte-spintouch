@@ -1,0 +1,78 @@
+{
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "default": "mdi:flask"
+      },
+      "total_chlorine": {
+        "default": "mdi:flask"
+      },
+      "bromine": {
+        "default": "mdi:flask"
+      },
+      "ph": {
+        "default": "mdi:ph"
+      },
+      "alkalinity": {
+        "default": "mdi:water"
+      },
+      "calcium": {
+        "default": "mdi:water"
+      },
+      "cyanuric_acid": {
+        "default": "mdi:shield-sun"
+      },
+      "salt": {
+        "default": "mdi:shaker"
+      },
+      "copper": {
+        "default": "mdi:flask"
+      },
+      "iron": {
+        "default": "mdi:iron"
+      },
+      "phosphate": {
+        "default": "mdi:flask-outline"
+      },
+      "borate": {
+        "default": "mdi:flask-outline"
+      },
+      "combined_chlorine": {
+        "default": "mdi:flask-outline"
+      },
+      "fc_cya_ratio": {
+        "default": "mdi:percent"
+      },
+      "last_reading": {
+        "default": "mdi:clock-outline"
+      },
+      "report_time": {
+        "default": "mdi:clock-outline"
+      },
+      "water_quality": {
+        "default": "mdi:water-check"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "default": "mdi:bluetooth",
+        "state": {
+          "on": "mdi:bluetooth-connect",
+          "off": "mdi:bluetooth-off"
+        }
+      },
+      "connection_enabled": {
+        "default": "mdi:connection",
+        "state": {
+          "on": "mdi:connection",
+          "off": "mdi:close-network-outline"
+        }
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "default": "mdi:bluetooth-connect"
+      }
+    }
+  }
+}

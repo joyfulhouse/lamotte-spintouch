@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "検出された SpinTouch デバイスを選択するか、Bluetooth アドレスを手動で入力してください。",
+        "data": {
+          "address": "Bluetooth アドレス",
+          "disk_series": "ディスクシリーズ"
+        },
+        "data_description": {
+          "address": "SpinTouch デバイスの Bluetooth MAC アドレス",
+          "disk_series": "使用している SpinDisk シリーズ（自動検出はほとんどのユーザーに対応）"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "SpinTouch を確認",
+        "description": "{name} ({address}) をセットアップしますか？",
+        "data": {
+          "disk_series": "ディスクシリーズ"
+        },
+        "data_description": {
+          "disk_series": "使用している SpinDisk シリーズ（自動検出はほとんどのユーザーに対応）"
+        }
+      },
+      "reconfigure": {
+        "title": "SpinTouch を再設定",
+        "description": "{name} の設定を更新します。",
+        "data": {
+          "disk_series": "ディスクシリーズ"
+        },
+        "data_description": {
+          "disk_series": "使用している SpinDisk シリーズ（自動検出はほとんどのユーザーに対応）"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "デバイスは既に設定されています",
+      "no_device": "デバイスが見つかりません",
+      "reconfigure_successful": "設定が正常に更新されました"
+    },
+    "error": {
+      "cannot_connect": "デバイスに接続できませんでした"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch オプション",
+        "data": {
+          "disk_series": "ディスクシリーズ"
+        },
+        "data_description": {
+          "disk_series": "使用している SpinDisk シリーズ（自動検出はほとんどのユーザーに対応）"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "{address} の SpinTouch デバイスに接続できませんでした。デバイスの電源が入っており、Bluetooth の範囲内にあることを確認してください。"
+    },
+    "communication_error": {
+      "message": "SpinTouch デバイスとの通信エラー: {error}"
+    },
+    "data_parse_error": {
+      "message": "SpinTouch デバイスからのデータを解析できませんでした。デバイスの再テストが必要な場合があります。"
+    },
+    "device_unavailable": {
+      "message": "{address} の SpinTouch デバイスは利用できません。電源が入っており、Bluetooth の範囲内にあることを確認してください。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "遊離塩素"
+      },
+      "total_chlorine": {
+        "name": "総塩素"
+      },
+      "bromine": {
+        "name": "臭素"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "総アルカリ度"
+      },
+      "calcium": {
+        "name": "カルシウム硬度"
+      },
+      "cyanuric_acid": {
+        "name": "シアヌル酸"
+      },
+      "salt": {
+        "name": "塩分"
+      },
+      "copper": {
+        "name": "銅"
+      },
+      "iron": {
+        "name": "鉄"
+      },
+      "phosphate": {
+        "name": "リン酸塩"
+      },
+      "borate": {
+        "name": "ホウ酸塩"
+      },
+      "combined_chlorine": {
+        "name": "結合塩素"
+      },
+      "fc_cya_ratio": {
+        "name": "遊離塩素/シアヌル酸比"
+      },
+      "last_reading": {
+        "name": "最終測定"
+      },
+      "report_time": {
+        "name": "レポート時間"
+      },
+      "water_quality": {
+        "name": "水質"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "接続済み"
+      },
+      "connection_enabled": {
+        "name": "接続有効"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "強制再接続"
+      }
+    }
+  }
+}

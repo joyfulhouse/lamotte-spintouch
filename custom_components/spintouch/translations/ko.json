@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "검색된 SpinTouch 장치를 선택하거나 Bluetooth 주소를 수동으로 입력하세요.",
+        "data": {
+          "address": "Bluetooth 주소",
+          "disk_series": "디스크 시리즈"
+        },
+        "data_description": {
+          "address": "SpinTouch 장치의 Bluetooth MAC 주소",
+          "disk_series": "사용 중인 SpinDisk 시리즈 (자동 감지는 대부분의 사용자에게 작동합니다)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "SpinTouch 확인",
+        "description": "{name} ({address})을(를) 설정하시겠습니까?",
+        "data": {
+          "disk_series": "디스크 시리즈"
+        },
+        "data_description": {
+          "disk_series": "사용 중인 SpinDisk 시리즈 (자동 감지는 대부분의 사용자에게 작동합니다)"
+        }
+      },
+      "reconfigure": {
+        "title": "SpinTouch 재구성",
+        "description": "{name}의 구성을 업데이트합니다.",
+        "data": {
+          "disk_series": "디스크 시리즈"
+        },
+        "data_description": {
+          "disk_series": "사용 중인 SpinDisk 시리즈 (자동 감지는 대부분의 사용자에게 작동합니다)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "장치가 이미 구성되어 있습니다",
+      "no_device": "장치를 찾을 수 없습니다",
+      "reconfigure_successful": "구성이 성공적으로 업데이트되었습니다"
+    },
+    "error": {
+      "cannot_connect": "장치에 연결할 수 없습니다"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch 옵션",
+        "data": {
+          "disk_series": "디스크 시리즈"
+        },
+        "data_description": {
+          "disk_series": "사용 중인 SpinDisk 시리즈 (자동 감지는 대부분의 사용자에게 작동합니다)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "{address}의 SpinTouch 장치에 연결할 수 없습니다. 장치가 켜져 있고 Bluetooth 범위 내에 있는지 확인하세요."
+    },
+    "communication_error": {
+      "message": "SpinTouch 장치와의 통신 오류: {error}"
+    },
+    "data_parse_error": {
+      "message": "SpinTouch 장치의 데이터를 구문 분석할 수 없습니다. 장치를 다시 테스트해야 할 수 있습니다."
+    },
+    "device_unavailable": {
+      "message": "{address}의 SpinTouch 장치를 사용할 수 없습니다. 장치가 켜져 있고 Bluetooth 범위 내에 있는지 확인하세요."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "유리염소"
+      },
+      "total_chlorine": {
+        "name": "총염소"
+      },
+      "bromine": {
+        "name": "브롬"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "총알칼리도"
+      },
+      "calcium": {
+        "name": "칼슘경도"
+      },
+      "cyanuric_acid": {
+        "name": "시아누르산"
+      },
+      "salt": {
+        "name": "염분"
+      },
+      "copper": {
+        "name": "구리"
+      },
+      "iron": {
+        "name": "철"
+      },
+      "phosphate": {
+        "name": "인산염"
+      },
+      "borate": {
+        "name": "붕산염"
+      },
+      "combined_chlorine": {
+        "name": "결합염소"
+      },
+      "fc_cya_ratio": {
+        "name": "유리염소/시아누르산 비율"
+      },
+      "last_reading": {
+        "name": "마지막 측정"
+      },
+      "report_time": {
+        "name": "보고 시간"
+      },
+      "water_quality": {
+        "name": "수질"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "연결됨"
+      },
+      "connection_enabled": {
+        "name": "연결 활성화됨"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "강제 재연결"
+      }
+    }
+  }
+}

@@ -9,8 +9,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from .const import DOMAIN
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
-
+    from . import SpinTouchConfigEntry
     from .coordinator import SpinTouchCoordinator
 
 # Device info constants
@@ -34,7 +33,7 @@ class SpinTouchEntity:
     def _setup_spintouch_device(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
         key: str,
         name: str,
     ) -> None:

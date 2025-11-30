@@ -16,7 +16,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .base import SpinTouchEntity
 from .const import (
     CALCULATED_SENSORS,
-    DOMAIN,
     SENSORS,
 )
 from .coordinator import SpinTouchCoordinator, SpinTouchData
@@ -41,18 +40,19 @@ PARAMETER_SHORT_NAMES: dict[str, str] = {
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import SpinTouchConfigEntry
+
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
+    _hass: HomeAssistant,
+    entry: SpinTouchConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SpinTouch sensors from a config entry."""
-    coordinator: SpinTouchCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     entities: list[SensorEntity] = []
 
@@ -110,7 +110,7 @@ class SpinTouchSensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
         key: str,
         name: str,
         unit: str | None,
@@ -169,7 +169,7 @@ class SpinTouchLastReadingSensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -213,7 +213,7 @@ class SpinTouchReportTimeSensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -263,7 +263,7 @@ class SpinTouchWaterQualitySensor(
     def __init__(
         self,
         coordinator: SpinTouchCoordinator,
-        entry: ConfigEntry,
+        entry: SpinTouchConfigEntry,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)

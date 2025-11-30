@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "Selecteer een ontdekt SpinTouch-apparaat of voer het Bluetooth-adres handmatig in.",
+        "data": {
+          "address": "Bluetooth-adres",
+          "disk_series": "Schijfserie"
+        },
+        "data_description": {
+          "address": "Het Bluetooth MAC-adres van uw SpinTouch-apparaat",
+          "disk_series": "De SpinDisk-serie die u gebruikt (Automatische detectie werkt voor de meeste gebruikers)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "SpinTouch bevestigen",
+        "description": "Wilt u {name} ({address}) instellen?",
+        "data": {
+          "disk_series": "Schijfserie"
+        },
+        "data_description": {
+          "disk_series": "De SpinDisk-serie die u gebruikt (Automatische detectie werkt voor de meeste gebruikers)"
+        }
+      },
+      "reconfigure": {
+        "title": "SpinTouch opnieuw configureren",
+        "description": "Configuratie bijwerken voor {name}.",
+        "data": {
+          "disk_series": "Schijfserie"
+        },
+        "data_description": {
+          "disk_series": "De SpinDisk-serie die u gebruikt (Automatische detectie werkt voor de meeste gebruikers)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Apparaat is al geconfigureerd",
+      "no_device": "Geen apparaat gevonden",
+      "reconfigure_successful": "Configuratie succesvol bijgewerkt"
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met apparaat"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch-opties",
+        "data": {
+          "disk_series": "Schijfserie"
+        },
+        "data_description": {
+          "disk_series": "De SpinDisk-serie die u gebruikt (Automatische detectie werkt voor de meeste gebruikers)"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "Kan geen verbinding maken met SpinTouch-apparaat op {address}. Zorg ervoor dat het apparaat is ingeschakeld en binnen Bluetooth-bereik is."
+    },
+    "communication_error": {
+      "message": "Communicatiefout met SpinTouch-apparaat: {error}"
+    },
+    "data_parse_error": {
+      "message": "Kan gegevens van SpinTouch-apparaat niet parseren. Het apparaat moet mogelijk opnieuw worden getest."
+    },
+    "device_unavailable": {
+      "message": "SpinTouch-apparaat op {address} is niet beschikbaar. Controleer of het is ingeschakeld en binnen Bluetooth-bereik is."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "Vrij chloor"
+      },
+      "total_chlorine": {
+        "name": "Totaal chloor"
+      },
+      "bromine": {
+        "name": "Broom"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "alkalinity": {
+        "name": "Totale alkaliteit"
+      },
+      "calcium": {
+        "name": "Calciumhardheid"
+      },
+      "cyanuric_acid": {
+        "name": "Cyanuurzuur"
+      },
+      "salt": {
+        "name": "Zout"
+      },
+      "copper": {
+        "name": "Koper"
+      },
+      "iron": {
+        "name": "IJzer"
+      },
+      "phosphate": {
+        "name": "Fosfaat"
+      },
+      "borate": {
+        "name": "Boraat"
+      },
+      "combined_chlorine": {
+        "name": "Gebonden chloor"
+      },
+      "fc_cya_ratio": {
+        "name": "VC/CYZ-verhouding"
+      },
+      "last_reading": {
+        "name": "Laatste meting"
+      },
+      "report_time": {
+        "name": "Rapporttijd"
+      },
+      "water_quality": {
+        "name": "Waterkwaliteit"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Verbonden"
+      },
+      "connection_enabled": {
+        "name": "Verbinding ingeschakeld"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "Herverbinding forceren"
+      }
+    }
+  }
+}

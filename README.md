@@ -1,10 +1,21 @@
-# LaMotte WaterLink Spin Touch Integration
+<p align="center">
+  <img src="brand/logo.png" alt="SpinTouch Logo" width="400">
+</p>
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![GitHub Release](https://img.shields.io/github/v/release/joyfulhouse/lamotte-spintouch)](https://github.com/joyfulhouse/lamotte-spintouch/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">LaMotte WaterLink Spin Touch Integration</h1>
 
-Home Assistant integration for the **LaMotte WaterLink Spin Touch** water testing device. The Spin Touch is a handheld photometer that reads pool and spa water quality parameters via Bluetooth LE.
+<p align="center">
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/joyfulhouse/lamotte-spintouch/releases"><img src="https://img.shields.io/github/v/release/joyfulhouse/lamotte-spintouch" alt="GitHub Release"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  Home Assistant integration for the <strong>LaMotte WaterLink Spin Touch</strong> water testing device.<br>
+  The Spin Touch is a handheld photometer that reads pool and spa water quality parameters via Bluetooth LE.
+</p>
+
+---
 
 ## Features
 
@@ -91,6 +102,24 @@ Home Assistant integration for the **LaMotte WaterLink Spin Touch** water testin
 5. Select your device from the discovered list (or enter MAC address manually)
 6. Choose your disk series (or leave as Auto-detect)
 
+### Configuration Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| Bluetooth Address | MAC address of your SpinTouch device | Auto-discovered |
+| Disk Series | SpinDisk series you use (203, 204, 303, 304, 402) | Auto-detect |
+
+### Removal
+
+To remove the integration:
+
+1. Go to **Settings → Devices & Services**
+2. Find "LaMotte WaterLink Spin Touch" in the integrations list
+3. Click the three dots menu → **Delete**
+4. Confirm the deletion
+
+If you installed via HACS, you can also uninstall the integration through HACS after removing it from Home Assistant.
+
 ## How It Works
 
 ```
@@ -121,6 +150,61 @@ This cycle ensures your phone app can still connect to view results and manage t
 | 204 | 4349-H/J | FC, TC, Br, pH, Alk, Ca, CYA, Cu, Salt, Phosphate | High range Ca/Salt |
 | 304 | 4350-H/J | FC, TC, Br, pH, Alk, Ca, CYA, Cu, Salt, Borate | High range Ca/Salt |
 | 402 | 4331-H/J | pH, Alk, Ca, Cu, Fe, Borate, Biguanide | Biguanide pools |
+
+## Use Cases
+
+### Pool Maintenance Automation
+
+```yaml
+automation:
+  - alias: "Low Chlorine Alert"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.spintouch_free_chlorine
+        below: 1.0
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Pool Alert"
+          message: "Free chlorine is low ({{ states('sensor.spintouch_free_chlorine') }} ppm). Consider adding chlorine."
+
+  - alias: "pH Out of Range"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.spintouch_ph
+        above: 7.8
+      - platform: numeric_state
+        entity_id: sensor.spintouch_ph
+        below: 7.2
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Pool Alert"
+          message: "pH is {{ states('sensor.spintouch_ph') }}. Target range: 7.2-7.6"
+```
+
+### Dashboard Card
+
+```yaml
+type: entities
+title: Pool Water Quality
+entities:
+  - entity: sensor.spintouch_water_quality
+  - entity: sensor.spintouch_free_chlorine
+  - entity: sensor.spintouch_ph
+  - entity: sensor.spintouch_alkalinity
+  - entity: sensor.spintouch_calcium
+  - entity: sensor.spintouch_cyanuric_acid
+  - entity: sensor.spintouch_report_time
+```
+
+## Known Limitations
+
+- **Single device support**: The integration connects to one SpinTouch device at a time
+- **Device must be on results screen**: The SpinTouch only broadcasts via Bluetooth when displaying test results
+- **Shared Bluetooth access**: The device can only connect to one client at a time - the integration automatically disconnects to allow phone app access
+- **No remote test triggering**: Tests must be initiated manually on the physical device
+- **Result persistence**: The integration reads the last test result stored on the device; historical data is not retained on the device
 
 ## Troubleshooting
 

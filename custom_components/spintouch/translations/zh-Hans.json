@@ -1,0 +1,141 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LaMotte WaterLink Spin Touch",
+        "description": "选择已发现的 SpinTouch 设备或手动输入蓝牙地址。",
+        "data": {
+          "address": "蓝牙地址",
+          "disk_series": "试剂盘系列"
+        },
+        "data_description": {
+          "address": "您的 SpinTouch 设备的蓝牙 MAC 地址",
+          "disk_series": "您使用的 SpinDisk 系列（自动检测适用于大多数用户）"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "确认 SpinTouch",
+        "description": "您要设置 {name} ({address}) 吗？",
+        "data": {
+          "disk_series": "试剂盘系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自动检测适用于大多数用户）"
+        }
+      },
+      "reconfigure": {
+        "title": "重新配置 SpinTouch",
+        "description": "更新 {name} 的配置。",
+        "data": {
+          "disk_series": "试剂盘系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自动检测适用于大多数用户）"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "设备已配置",
+      "no_device": "未找到设备",
+      "reconfigure_successful": "配置更新成功"
+    },
+    "error": {
+      "cannot_connect": "无法连接到设备"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SpinTouch 选项",
+        "data": {
+          "disk_series": "试剂盘系列"
+        },
+        "data_description": {
+          "disk_series": "您使用的 SpinDisk 系列（自动检测适用于大多数用户）"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "connection_failed": {
+      "message": "无法连接到地址为 {address} 的 SpinTouch 设备。请确保设备已开机并在蓝牙范围内。"
+    },
+    "communication_error": {
+      "message": "与 SpinTouch 设备通信时出错：{error}"
+    },
+    "data_parse_error": {
+      "message": "无法解析 SpinTouch 设备的数据。设备可能需要重新测试。"
+    },
+    "device_unavailable": {
+      "message": "地址为 {address} 的 SpinTouch 设备不可用。请检查设备是否已开机并在蓝牙范围内。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "free_chlorine": {
+        "name": "游离氯"
+      },
+      "total_chlorine": {
+        "name": "总氯"
+      },
+      "bromine": {
+        "name": "溴"
+      },
+      "ph": {
+        "name": "pH 值"
+      },
+      "alkalinity": {
+        "name": "总碱度"
+      },
+      "calcium": {
+        "name": "钙硬度"
+      },
+      "cyanuric_acid": {
+        "name": "氰尿酸"
+      },
+      "salt": {
+        "name": "盐"
+      },
+      "copper": {
+        "name": "铜"
+      },
+      "iron": {
+        "name": "铁"
+      },
+      "phosphate": {
+        "name": "磷酸盐"
+      },
+      "borate": {
+        "name": "硼酸盐"
+      },
+      "combined_chlorine": {
+        "name": "化合氯"
+      },
+      "fc_cya_ratio": {
+        "name": "游离氯/氰尿酸比"
+      },
+      "last_reading": {
+        "name": "最后读数"
+      },
+      "report_time": {
+        "name": "报告时间"
+      },
+      "water_quality": {
+        "name": "水质"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "已连接"
+      },
+      "connection_enabled": {
+        "name": "连接已启用"
+      }
+    },
+    "button": {
+      "force_reconnect": {
+        "name": "强制重新连接"
+      }
+    }
+  }
+}
