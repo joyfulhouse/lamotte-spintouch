@@ -1,0 +1,7 @@
+{
+  "name": "LaMotte WaterLink Spin Touch",
+  "content_in_root": false,
+  "zip_release": true,
+  "filename": "spintouch.zip",
+  "homeassistant": "2025.11.0"
+}
