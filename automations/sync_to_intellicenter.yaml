@@ -1,0 +1,152 @@
+# Sync SpinTouch Readings to Pentair IntelliCenter
+#
+# This automation updates IntelliCenter chemistry values that it cannot
+# measure on its own (alkalinity, calcium hardness, cyanuric acid) using
+# readings from the LaMotte SpinTouch water tester.
+#
+# Prerequisites:
+# - LaMotte SpinTouch custom integration installed and configured
+# - Pentair IntelliCenter integration installed and configured
+# - IntelliChem module connected to your pool system
+#
+# Usage:
+# Copy this file to your Home Assistant automations directory or include
+# it in your configuration.yaml using:
+#   automation: !include_dir_merge_list automations/
+
+# Sync all chemistry readings when SpinTouch readings change
+- id: spintouch_sync_to_intellicenter
+  alias: "SpinTouch: Sync Chemistry to IntelliCenter"
+  description: >-
+    Updates IntelliCenter chemistry values when SpinTouch readings change.
+    Triggers when any of the synced sensor values update.
+  mode: single
+  trigger:
+    # Trigger when any of the relevant sensors change to a new numeric value
+    - platform: state
+      entity_id:
+        - sensor.spintouch_alkalinity
+        - sensor.spintouch_calcium
+        - sensor.spintouch_cyanuric_acid
+      not_from:
+        - "unknown"
+        - "unavailable"
+      not_to:
+        - "unknown"
+        - "unavailable"
+  condition:
+    # Ensure ALL sensors have valid numeric values before syncing
+    - alias: "Alkalinity is valid and numeric"
+      condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_alkalinity') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_alkalinity') | float(default=-1) >= 0 }}
+
+    - alias: "Calcium is valid and numeric"
+      condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_calcium') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_calcium') | float(default=-1) >= 0 }}
+
+    - alias: "Cyanuric Acid is valid and numeric"
+      condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_cyanuric_acid') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_cyanuric_acid') | float(default=-1) >= 0 }}
+  action:
+    - alias: "Update IntelliChem Alkalinity"
+      service: number.set_value
+      target:
+        entity_id: number.intellichem_alkalinity
+      data:
+        value: "{{ states('sensor.spintouch_alkalinity') | float }}"
+
+    - alias: "Update IntelliChem Calcium Hardness"
+      service: number.set_value
+      target:
+        entity_id: number.intellichem_calcium_hardness
+      data:
+        value: "{{ states('sensor.spintouch_calcium') | float }}"
+
+    - alias: "Update IntelliChem Cyanuric Acid"
+      service: number.set_value
+      target:
+        entity_id: number.intellichem_cyanuric_acid
+      data:
+        value: "{{ states('sensor.spintouch_cyanuric_acid') | float }}"
+
+    - alias: "Log sync completion"
+      service: system_log.write
+      data:
+        message: >-
+          SpinTouch chemistry synced to IntelliCenter:
+          Alkalinity={{ states('sensor.spintouch_alkalinity') }} ppm,
+          Calcium={{ states('sensor.spintouch_calcium') }} ppm,
+          CYA={{ states('sensor.spintouch_cyanuric_acid') }} ppm
+        level: info
+        logger: custom_components.spintouch
+
+    - alias: "Optional notification"
+      service: persistent_notification.create
+      data:
+        title: "Pool Chemistry Updated"
+        message: >-
+          SpinTouch readings synced to IntelliCenter:
+          - Alkalinity: {{ states('sensor.spintouch_alkalinity') }} ppm
+          - Calcium Hardness: {{ states('sensor.spintouch_calcium') }} ppm
+          - Cyanuric Acid: {{ states('sensor.spintouch_cyanuric_acid') }} ppm
+
+
+# Individual parameter syncs (for manual triggering or selective updates)
+- id: spintouch_sync_alkalinity
+  alias: "SpinTouch: Sync Alkalinity Only"
+  description: "Manually sync alkalinity reading to IntelliCenter"
+  mode: single
+  trigger: []  # Manual trigger only
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_alkalinity') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_alkalinity') | float(default=-1) >= 0 }}
+  action:
+    - service: number.set_value
+      target:
+        entity_id: number.intellichem_alkalinity
+      data:
+        value: "{{ states('sensor.spintouch_alkalinity') | float }}"
+
+
+- id: spintouch_sync_calcium
+  alias: "SpinTouch: Sync Calcium Hardness Only"
+  description: "Manually sync calcium hardness reading to IntelliCenter"
+  mode: single
+  trigger: []  # Manual trigger only
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_calcium') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_calcium') | float(default=-1) >= 0 }}
+  action:
+    - service: number.set_value
+      target:
+        entity_id: number.intellichem_calcium_hardness
+      data:
+        value: "{{ states('sensor.spintouch_calcium') | float }}"
+
+
+- id: spintouch_sync_cya
+  alias: "SpinTouch: Sync Cyanuric Acid Only"
+  description: "Manually sync cyanuric acid reading to IntelliCenter"
+  mode: single
+  trigger: []  # Manual trigger only
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('sensor.spintouch_cyanuric_acid') not in ['unknown', 'unavailable']
+           and states('sensor.spintouch_cyanuric_acid') | float(default=-1) >= 0 }}
+  action:
+    - service: number.set_value
+      target:
+        entity_id: number.intellichem_cyanuric_acid
+      data:
+        value: "{{ states('sensor.spintouch_cyanuric_acid') | float }}"
