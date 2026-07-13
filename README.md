@@ -173,6 +173,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to set up a development environme
 
 ## Support
 
+- Join the [JoyfulHouse Discord](https://discord.gg/gc4eTPwxjJ) for support and discussion across all JoyfulHouse Home Assistant integrations and libraries.
 - **Issues:** <https://github.com/joyfulhouse/lamotte-spintouch/issues>
 - **Discussions / questions:** open an issue with the `question` label.
 
