@@ -9,6 +9,7 @@ Home Assistant integration for the LaMotte WaterLink Spin Touch water testing de
 [![Project Maintenance][maintenance-shield]][maintenance]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
 [![Ko-fi][kofi-shield]][kofi]
+[![Built with Omnigent][omnigent-shield]][omnigent]
 
 ## What It Does
 
@@ -196,6 +197,14 @@ Built and maintained by [JoyfulHouse](https://github.com/joyfulhouse).
 > LaMotte and WaterLink are trademarks of LaMotte Company. This project is not affiliated with
 > or endorsed by LaMotte.
 
+---
+
+<p align="center">
+  <a href="https://github.com/omnigent-ai/omnigent"><img src="https://raw.githubusercontent.com/joyfulhouse/.github/main/assets/badges/built-with-omnigent.svg" alt="Built with Omnigent"></a>
+  <br>
+  <sub>Built with <a href="https://github.com/omnigent-ai/omnigent">Omnigent</a> — the open-source AI agent framework and meta-harness.</sub>
+</p>
+
 <!-- Badge links -->
 [releases-shield]: https://img.shields.io/github/release/joyfulhouse/lamotte-spintouch.svg?style=for-the-badge
 [releases]: https://github.com/joyfulhouse/lamotte-spintouch/releases
@@ -212,3 +221,5 @@ Built and maintained by [JoyfulHouse](https://github.com/joyfulhouse).
 [sponsors]: https://github.com/sponsors/btli
 [kofi-shield]: https://img.shields.io/badge/Ko--fi-donate-FF5E5B.svg?style=for-the-badge&logo=ko-fi&logoColor=white
 [kofi]: https://ko-fi.com/bryanli
+[omnigent-shield]: https://raw.githubusercontent.com/joyfulhouse/.github/main/assets/badges/built-with-omnigent.svg
+[omnigent]: https://github.com/omnigent-ai/omnigent
